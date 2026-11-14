@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>買い物リスト管理シート</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <h1>買い物リスト管理シート</h1>
+        <span class="version" id="version">v.0.4.0</span>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="btn" id="btn-export">エクスポート</button>
+        <button type="button" class="btn" id="btn-import">インポート</button>
+        <button type="button" class="btn" id="btn-update">アップデート</button>
+        <button type="button" class="btn" id="btn-restart">再起動</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="card entry-card">
+        <div class="edit-banner hidden" id="edit-banner">
+          <span id="edit-banner-text">編集中</span>
+          <button type="button" class="btn btn-small btn-ghost" id="btn-edit-cancel">編集を解除</button>
+        </div>
+        <div class="entry-row">
+          <div class="field">
+            <label for="input-date">日付</label>
+            <input type="date" id="input-date" />
+          </div>
+          <div class="field field-grow">
+            <label for="input-name">商品名</label>
+            <input
+              type="text"
+              id="input-name"
+              list="product-name-list"
+              placeholder="商品名を入力（過去に入力したものは選択できます）"
+              autocomplete="off"
+            />
+            <datalist id="product-name-list"></datalist>
+          </div>
+          <div class="field field-grow">
+            <label for="input-memo">メモ</label>
+            <input
+              type="text"
+              id="input-memo"
+              placeholder="型番・色・容量など (同じ商品名でも異なる点をメモ)"
+              autocomplete="off"
+            />
+          </div>
+          <div class="field">
+            <label for="input-store">購入店</label>
+            <select id="input-store"></select>
+          </div>
+          <div class="field">
+            <label for="input-price">今回の値段</label>
+            <div class="price-input">
+              <span class="yen">¥</span>
+              <input type="number" id="input-price" min="0" step="1" placeholder="0" />
+            </div>
+          </div>
+          <div class="field field-url">
+            <label for="input-url">URL</label>
+            <input type="url" id="input-url" placeholder="https://" autocomplete="off" />
+          </div>
+          <div class="field field-action">
+            <button type="button" class="btn btn-primary" id="btn-add">追加</button>
+            <button type="button" class="btn" id="btn-clear">クリア</button>
+          </div>
+        </div>
+        <div class="store-add-row hidden" id="store-add-row">
+          <label for="input-new-store">新しい購入店</label>
+          <input type="text" id="input-new-store" placeholder="店名を入力" />
+          <button type="button" class="btn btn-small" id="btn-store-save">保存</button>
+          <button type="button" class="btn btn-small btn-ghost" id="btn-store-cancel">キャンセル</button>
+        </div>
+      </section>
+
+      <section class="card summary-card hidden" id="summary-card">
+        <div class="summary-head">
+          <span class="summary-title" id="summary-title"></span>
+          <span class="summary-count" id="summary-count"></span>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <span class="summary-label">最安値</span>
+            <span class="summary-value" id="summary-min">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">平均</span>
+            <span class="summary-value" id="summary-avg">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">最高値</span>
+            <span class="summary-value" id="summary-max">-</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">今回との差</span>
+            <span class="summary-value" id="summary-diff">-</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card list-card">
+        <div class="list-head">
+          <h2 id="list-title">購入履歴</h2>
+          <span class="list-meta" id="list-meta"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th class="col-date">日付</th>
+                <th class="col-name">商品名</th>
+                <th class="col-memo">メモ</th>
+                <th class="col-store">購入店</th>
+                <th class="col-price">値段</th>
+                <th class="col-url">URL</th>
+                <th class="col-action"></th>
+              </tr>
+            </thead>
+            <tbody id="history-body"></tbody>
+          </table>
+          <p class="empty" id="empty-message">まだ購入履歴がありません。</p>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="update-dialog" class="dialog">
+      <form method="dialog" class="dialog-form">
+        <h2>アップデート</h2>
+        <p class="dialog-desc">
+          GitHub の最新版を取得して再起動します。設定は不要です。
+        </p>
+        <pre class="dialog-log" id="update-log"></pre>
+        <div class="dialog-actions">
+          <button type="button" class="btn" id="btn-update-close">閉じる</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="export-dialog" class="dialog">
+      <form method="dialog" class="dialog-form">
+        <h2>エクスポート</h2>
+        <p class="dialog-desc">データをファイルに書き出します。</p>
+        <div class="dialog-actions dialog-actions-stacked">
+          <button type="button" class="btn" id="btn-export-json">
+            JSON (バックアップ・再インポート用)
+          </button>
+          <button type="button" class="btn" id="btn-export-csv">CSV (Excel・シート用)</button>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="btn" id="btn-export-close">閉じる</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="import-dialog" class="dialog">
+      <form method="dialog" class="dialog-form">
+        <h2>インポート</h2>
+        <p class="dialog-desc" id="import-desc">
+          エクスポートした JSON ファイルを取り込みます。
+        </p>
+        <ul class="import-summary">
+          <li>ファイル: <span id="import-file">-</span></li>
+          <li>購入履歴: <span id="import-count">-</span> 件</li>
+          <li>購入店: <span id="import-stores">-</span> 件</li>
+        </ul>
+        <label class="dialog-check">
+          <input type="radio" name="import-mode" value="merge" checked />
+          <span>マージ (同じIDの記録は更新し、無いものは追加)</span>
+        </label>
+        <label class="dialog-check">
+          <input type="radio" name="import-mode" value="replace" />
+          <span>すべて置き換える (現在のデータを削除してから取り込む)</span>
+        </label>
+        <div class="dialog-actions">
+          <button type="button" class="btn" id="btn-import-close">キャンセル</button>
+          <button type="button" class="btn btn-primary" id="btn-import-run">インポート実行</button>
+        </div>
+      </form>
+    </dialog>
+
+    <input type="file" id="import-file-input" accept="application/json,.json" class="hidden" />
+
+    <div class="toast hidden" id="toast"></div>
+
+    <script src="/js/app.js"></script>
+  </body>
+</html>

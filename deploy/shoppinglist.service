@@ -1,0 +1,20 @@
+[Unit]
+Description=買い物リスト管理シート v0.4.0 (Shopping List Management Sheet)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/shoppinglist
+ExecStart=/usr/bin/node /opt/shoppinglist/server.js
+Restart=always
+RestartSec=5
+Environment=PORT=3368
+Environment=HOST=127.0.0.1
+Environment=NODE_ENV=production
+Environment=SHOPPINGLIST_DATA_DIR=/opt/shoppinglist-data
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
