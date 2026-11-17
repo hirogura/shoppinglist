@@ -286,3 +286,105 @@ test('エクスポートとインポートが動作する', async () => {
   assert.ok(result.toast.includes('インポートしました'), `インポートに失敗しました: ${result.toast}`);
   assert.ok(!result.toastClass.includes('error'), `エラーが発生しています: ${result.toast}`);
 });
+
+test('通販検索ペインで検索結果と購入履歴を同じ画面で確認し、履歴へ転記できる', async () => {
+  const asin = 'B012345678';
+  const productUrl = `https://www.amazon.co.jp/dp/${asin}/`;
+  await api('/api/purchases', {
+    method: 'POST',
+    body: JSON.stringify({
+      date: '2026-09-01',
+      name: '検索対象商品',
+      store: 'Amazon',
+      price: 1000,
+      url: productUrl,
+    }),
+  });
+
+  const fakeSearch = {
+    query: '検索対象商品',
+    provider: 'all',
+    credits: { remaining: 85, resetAt: '2026-12-01T00:00:00.000Z' },
+    notices: [],
+    externalLinks: [
+      { id: 'amazon', label: 'Amazon', url: 'https://www.amazon.co.jp/s?k=x' },
+      { id: 'rakuten', label: '楽天', url: 'https://search.rakuten.co.jp/search/mall/x/' },
+      { id: 'yodobashi', label: 'ヨドバシ.com', url: 'https://www.yodobashi.com/?word=x' },
+    ],
+    items: [
+      {
+        id: `amazon:${asin}`,
+        provider: 'amazon',
+        providerLabel: 'Amazon',
+        store: 'Amazon',
+        asin,
+        title: '検索対象商品 最新モデル',
+        brand: 'テスト',
+        imageUrl: null,
+        price: 800,
+        priceText: '目安 ¥800',
+        estimate: true,
+        rating: 4.5,
+        reviews: 120,
+        url: productUrl,
+      },
+    ],
+  };
+
+  const { result, errors } = await runInBrowser(async (window) => {
+    const doc = window.document;
+    const realFetch = window.fetch;
+    window.fetch = (url, options) => {
+      if (String(url).startsWith('/api/search?')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => fakeSearch });
+      }
+      return realFetch(url, options);
+    };
+
+    click(window, 'btn-search');
+    await wait(400);
+    const paneOpened = !doc.getElementById('search-pane').classList.contains('hidden');
+    const tabs = [...doc.querySelectorAll('#search-providers .search-tab')].map((b) => b.textContent);
+    const links = [...doc.querySelectorAll('#search-links a')].length;
+    const pastRows = [...doc.querySelectorAll('.pane-history-row .phr-name')].map((n) => n.textContent);
+
+    type(window, 'search-q', '検索対象商品');
+    click(window, 'btn-search-run');
+    await wait(300);
+
+    const card = doc.querySelector('#search-results .result-card');
+    const badge = card ? card.querySelector('.history-badge').textContent : '';
+    const price = card ? card.querySelector('.result-price').textContent : '';
+    const diff = card ? card.querySelector('.price-diff').textContent : '';
+
+    card.querySelector('.btn-primary').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    await wait(300);
+
+    const filled = {
+      name: doc.getElementById('input-name').value,
+      price: doc.getElementById('input-price').value,
+      url: doc.getElementById('input-url').value,
+      store: doc.getElementById('input-store').value,
+      memo: doc.getElementById('input-memo').value,
+    };
+
+    click(window, 'btn-search-close');
+    const paneClosed = doc.getElementById('search-pane').classList.contains('hidden');
+    return { paneOpened, paneClosed, tabs, links, pastRows, badge, price, diff, filled };
+  });
+
+  assert.deepStrictEqual(errors, [], 'フロントでエラーが発生しています');
+  assert.strictEqual(result.paneOpened, true, '検索ペインが開きませんでした');
+  assert.strictEqual(result.paneClosed, true, '検索ペインが閉じませんでした');
+  assert.ok(result.tabs.some((t) => t.includes('すべて')), '検索タブが表示されていません');
+  assert.ok(result.links >= 3, '各サイトへの直接リンクが表示されていません');
+  assert.ok(result.pastRows.includes('検索対象商品'), 'ペインに購入履歴が表示されていません');
+  assert.match(result.badge, /購入履歴あり/, '検索結果に購入履歴バッジが付きませんでした');
+  assert.match(result.price, /800/, '検索結果の価格が表示されていません');
+  assert.match(result.diff, /200|買い時/, '価格差が表示されていません');
+  assert.strictEqual(result.filled.name, '検索対象商品 最新モデル');
+  assert.strictEqual(result.filled.price, '800');
+  assert.strictEqual(result.filled.url, productUrl);
+  assert.strictEqual(result.filled.store, 'Amazon');
+  assert.match(result.filled.memo, new RegExp(asin));
+});

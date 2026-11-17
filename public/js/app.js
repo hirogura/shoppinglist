@@ -3,19 +3,90 @@
 const el = (id) => document.getElementById(id);
 
 const state = {
-  version: '0.4.0',
+  version: '0.5.0',
   stores: [],
   productNames: [],
   purchases: [],
   stats: null,
   editingId: null,
   importPayload: null,
+  search: {
+    open: false,
+    query: '',
+    provider: 'all',
+    data: null,
+    providers: [],
+    credits: null,
+    notices: [],
+  },
 };
 
 const ADD_STORE_VALUE = '__add__';
 
+const SEARCH_LABELS = { amazon: 'Amazon', rakuten: '楽天', yodobashi: 'ヨドバシ.com' };
+const SEARCH_STORES = { amazon: 'Amazon', rakuten: '楽天', yodobashi: 'ヨドバシ' };
+
 const yen = (value) =>
   '¥' + Number(value || 0).toLocaleString('ja-JP', { maximumFractionDigits: 2 });
+
+function makeNode(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+function safeUrl(value) {
+  const text = String(value == null ? '' : value).trim();
+  return /^https?:\/\//i.test(text) ? text : null;
+}
+
+function extractAsin(value) {
+  const text = String(value == null ? '' : value);
+  const patterns = [
+    /\/dp\/([A-Z0-9]{10})(?:[\/?#]|$)/i,
+    /\/gp\/product\/([A-Z0-9]{10})(?:[\/?#]|$)/i,
+    /[?&]asin=([A-Z0-9]{10})(?:[&#]|$)/i,
+    /^\s*([A-Z0-9]{10})\s*$/i,
+  ];
+  for (const re of patterns) {
+    const match = text.match(re);
+    if (match) return match[1].toUpperCase();
+  }
+  return null;
+}
+
+function normalizeName(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[\s\-_・、。,"'（）()\[\]【】:：]/g, '');
+}
+
+// 検索結果と過去の購入記録を、ASIN → 商品名の順で照合する (クレジット消費なし)
+function findPastPurchases(item, purchases) {
+  const asin = String(item.asin || '').toUpperCase() || extractAsin(item.url);
+  if (asin) {
+    const hits = purchases.filter((p) => extractAsin(p.url) === asin);
+    if (hits.length) return hits;
+  }
+  const title = normalizeName(item.title);
+  if (title.length < 4) return [];
+  return purchases.filter((p) => {
+    const name = normalizeName(p.name);
+    return name.length >= 4 && (title.includes(name) || name.includes(title));
+  });
+}
+
+function summarizePurchases(rows) {
+  const prices = rows.map((r) => Number(r.price)).filter((n) => Number.isFinite(n));
+  if (!prices.length) return null;
+  return {
+    count: rows.length,
+    min: Math.min(...prices),
+    max: Math.max(...prices),
+    avg: Math.round((prices.reduce((a, b) => a + b, 0) / prices.length) * 100) / 100,
+  };
+}
 
 function todayString() {
   const d = new Date();
@@ -230,6 +301,7 @@ async function refresh() {
   renderProductNames();
   renderSummary();
   renderHistory();
+  renderPaneHistory();
 }
 
 let nameTimer = null;
@@ -454,6 +526,320 @@ async function runImport() {
   }
 }
 
+/* ---------- 通販検索ペイン ---------- */
+function toggleSearchPane(open) {
+  const pane = el('search-pane');
+  const willOpen = open === undefined ? pane.classList.contains('hidden') : open;
+  pane.classList.toggle('hidden', !willOpen);
+  document.body.classList.toggle('search-open', willOpen);
+  state.search.open = willOpen;
+  el('btn-search').setAttribute('aria-expanded', String(willOpen));
+  if (willOpen) {
+    if (!state.search.providers.length) loadSearchProviders();
+    renderExternalLinks();
+    renderPaneHistory();
+    setTimeout(() => el('search-q').focus(), 0);
+  }
+}
+
+async function loadSearchProviders() {
+  try {
+    const data = await api('/search/providers');
+    state.search.providers = data.providers || [];
+    state.search.credits = data.credits || null;
+    state.search.notices = data.notices || [];
+    renderSearchTabs();
+    renderSearchCredits();
+    renderSearchNotice();
+  } catch (e) {
+    el('search-note').textContent = `検索設定の取得に失敗しました: ${e.message}`;
+  }
+}
+
+function renderSearchTabs() {
+  const wrap = el('search-providers');
+  wrap.innerHTML = '';
+  const tabs = [
+    { id: 'all', label: 'すべて', kind: 'api', configured: true },
+    ...state.search.providers,
+  ];
+  for (const tab of tabs) {
+    const button = makeNode(
+      'button',
+      `search-tab${state.search.provider === tab.id ? ' active' : ''}`,
+      tab.label
+    );
+    button.type = 'button';
+    button.dataset.provider = tab.id;
+    if (tab.kind === 'link') button.appendChild(makeNode('span', 'tab-badge', 'リンク'));
+    button.addEventListener('click', () => {
+      state.search.provider = tab.id;
+      renderSearchTabs();
+      if (state.search.query) runSearch();
+    });
+    wrap.appendChild(button);
+  }
+}
+
+function renderSearchNotice() {
+  const wrap = el('search-note');
+  wrap.innerHTML = '';
+  const extra =
+    '検索結果の価格は目安です。実際の価格は商品ページでご確認ください。並び替え・購入履歴との照合は無料です。';
+  const dataNotices = state.search.data ? state.search.data.notices || [] : [];
+  for (const text of [extra, ...state.search.notices, ...dataNotices]) {
+    wrap.appendChild(makeNode('span', 'search-notice-line', text));
+  }
+}
+
+function renderSearchCredits() {
+  const credits = state.search.credits;
+  el('search-credits').textContent =
+    credits && credits.remaining != null
+      ? `Easyparser 残りクレジット ${credits.remaining}` +
+        (credits.resetAt ? ` (リセット ${String(credits.resetAt).slice(0, 10)})` : '')
+      : '';
+}
+
+function fallbackLinks() {
+  const q = encodeURIComponent(state.search.query || '');
+  return [
+    { id: 'amazon', label: 'Amazon', url: `https://www.amazon.co.jp/s?k=${q}` },
+    { id: 'rakuten', label: '楽天', url: `https://search.rakuten.co.jp/search/mall/${q}/` },
+    { id: 'yodobashi', label: 'ヨドバシ.com', url: `https://www.yodobashi.com/?word=${q}` },
+  ];
+}
+
+function renderExternalLinks() {
+  const wrap = el('search-links');
+  wrap.innerHTML = '';
+  const data = state.search.data;
+  const links = data && data.externalLinks && data.externalLinks.length
+    ? data.externalLinks
+    : fallbackLinks();
+  wrap.appendChild(makeNode('span', 'links-label', '各サイトで直接検索:'));
+  for (const link of links) {
+    const url = safeUrl(link.url);
+    if (!url) continue;
+    const anchor = makeNode('a', 'site-link', `${link.label} ↗`);
+    anchor.href = url;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    wrap.appendChild(anchor);
+  }
+}
+
+function sortedSearchItems(items) {
+  const sort = el('search-sort').value;
+  const price = (item) => (typeof item.price === 'number' ? item.price : Infinity);
+  const list = [...items];
+  if (sort === 'expensive') list.sort((a, b) => price(b) - price(a));
+  else if (sort === 'rating') {
+    list.sort(
+      (a, b) =>
+        (Number(b.rating) || 0) - (Number(a.rating) || 0) ||
+        (Number(b.reviews) || 0) - (Number(a.reviews) || 0)
+    );
+  } else if (sort === 'reviews') {
+    list.sort((a, b) => (Number(b.reviews) || 0) - (Number(a.reviews) || 0));
+  } else {
+    list.sort((a, b) => price(a) - price(b));
+  }
+  return list;
+}
+
+function buildResultCard(item) {
+  const card = makeNode('article', 'result-card');
+  const top = makeNode('div', 'result-top');
+  const label = SEARCH_LABELS[item.provider] || item.providerLabel || item.provider || '通販';
+  top.appendChild(makeNode('span', `provider-tag ${item.provider || ''}`, label));
+  if (item.brand) top.appendChild(makeNode('span', 'result-brand', item.brand));
+  card.appendChild(top);
+
+  const title = makeNode('div', 'result-title');
+  const url = safeUrl(item.url);
+  if (url) {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    anchor.textContent = item.title || '（商品名なし）';
+    title.appendChild(anchor);
+  } else {
+    title.textContent = item.title || '（商品名なし）';
+  }
+  card.appendChild(title);
+
+  const meta = makeNode('div', 'result-meta');
+  const rating = Number(item.rating);
+  if (Number.isFinite(rating) && rating > 0) meta.appendChild(makeNode('span', 'stars', `★ ${rating}`));
+  const reviews = Number(item.reviews);
+  if (Number.isFinite(reviews) && reviews > 0) {
+    meta.appendChild(makeNode('span', 'review-count', `${reviews}件`));
+  }
+  if (item.priceText) meta.appendChild(makeNode('strong', 'result-price', item.priceText));
+  card.appendChild(meta);
+
+  const past = findPastPurchases(item, state.purchases);
+  const stats = past.length ? summarizePurchases(past) : null;
+  if (stats) {
+    card.appendChild(
+      makeNode(
+        'div',
+        'history-badge',
+        `購入履歴あり ${stats.count}件 最安${yen(stats.min)} 平均${yen(stats.avg)}`
+      )
+    );
+    if (typeof item.price === 'number') {
+      const diff = Math.round((item.price - stats.min) * 100) / 100;
+      const text =
+        diff === 0
+          ? '過去最安と同額'
+          : `${diff > 0 ? '+' : ''}${yen(diff)} ${diff < 0 ? '← 買い時' : '過去最安比'}`;
+      card.appendChild(makeNode('div', `price-diff ${diff > 0 ? 'up' : diff < 0 ? 'down' : ''}`, text));
+    }
+  }
+
+  const actions = makeNode('div', 'result-actions');
+  const add = makeNode('button', 'btn btn-small btn-primary', '購入履歴へ追加');
+  add.type = 'button';
+  add.addEventListener('click', () => prefillFromSearch(item));
+  actions.appendChild(add);
+  if (url) {
+    const link = makeNode('a', 'btn btn-small', '商品ページ ↗');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    actions.appendChild(link);
+  }
+  card.appendChild(actions);
+  return card;
+}
+
+function renderSearchResults() {
+  const wrap = el('search-results');
+  wrap.innerHTML = '';
+  const data = state.search.data;
+  const items = sortedSearchItems(data && data.items ? data.items : []);
+  if (!items.length) {
+    wrap.appendChild(
+      makeNode('p', 'empty', '検索結果がありません。キーワードを変えるか、上のリンクから各サイトで検索してください。')
+    );
+    return;
+  }
+  for (const item of items) wrap.appendChild(buildResultCard(item));
+}
+
+function renderPaneHistory() {
+  const wrap = el('search-history');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const onlyMatches = el('search-only-matches').checked;
+  let rows = [...state.purchases];
+  if (onlyMatches && state.search.data && state.search.data.items.length) {
+    const ids = new Set();
+    for (const item of state.search.data.items) {
+      for (const purchase of findPastPurchases(item, state.purchases)) ids.add(purchase.id);
+    }
+    rows = rows.filter((p) => ids.has(p.id));
+  }
+  if (!rows.length) {
+    wrap.appendChild(
+      makeNode('p', 'pane-empty', onlyMatches ? '一致する購入履歴はありません。' : '購入履歴がありません。')
+    );
+    return;
+  }
+  for (const row of rows) {
+    const block = makeNode('div', 'pane-history-row');
+    const line1 = makeNode('div', 'phr-line1');
+    line1.appendChild(makeNode('span', 'phr-name', row.name));
+    line1.appendChild(makeNode('span', 'phr-price', yen(row.price)));
+    block.appendChild(line1);
+
+    const line2 = makeNode('div', 'phr-line2');
+    line2.appendChild(makeNode('span', 'phr-date', row.date));
+    if (row.store) line2.appendChild(makeNode('span', 'phr-store', row.store));
+    block.appendChild(line2);
+
+    const actions = makeNode('div', 'phr-actions');
+    const searchButton = makeNode('button', 'btn btn-small btn-ghost', 'この商品で検索');
+    searchButton.type = 'button';
+    searchButton.addEventListener('click', () => {
+      el('search-q').value = row.name;
+      state.search.query = '';
+      runSearch();
+    });
+    actions.appendChild(searchButton);
+
+    const editButton = makeNode('button', 'btn btn-small btn-ghost', 'フォームで編集');
+    editButton.type = 'button';
+    editButton.addEventListener('click', () => {
+      startEdit(row);
+      document.querySelector('.entry-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+    actions.appendChild(editButton);
+    block.appendChild(actions);
+    wrap.appendChild(block);
+  }
+}
+
+function prefillFromSearch(item) {
+  resetForm();
+  el('input-date').value = todayString();
+  el('input-name').value = String(item.title || '').trim();
+  const store = item.store || SEARCH_STORES[item.provider] || '';
+  el('input-store').value = state.stores.some((s) => s.name === store) ? store : '';
+  el('input-price').value = typeof item.price === 'number' ? Math.round(item.price) : '';
+  el('input-url').value = safeUrl(item.url) || '';
+
+  const label = SEARCH_LABELS[item.provider] || item.providerLabel || item.provider || '通販';
+  const parts = [`通販検索 (${label})`];
+  const asin = String(item.asin || '').toUpperCase() || extractAsin(item.url);
+  if (asin) parts.push(`ASIN: ${asin}`);
+  if (item.externalId) parts.push(`商品コード: ${item.externalId}`);
+  el('input-memo').value = parts.join(' / ').slice(0, 500);
+
+  renderStores();
+  renderSummary();
+  refresh().catch((e) => toast(e.message, 'error'));
+  document.querySelector('.entry-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  toast('検索結果を入力フォームに転記しました。内容を確認して「追加」を押してください', 'ok');
+}
+
+async function runSearch() {
+  const q = el('search-q').value.trim();
+  if (!q) {
+    toast('キーワードを入力してください', 'error');
+    el('search-q').focus();
+    return;
+  }
+  state.search.query = q;
+  const button = el('btn-search-run');
+  button.disabled = true;
+  button.textContent = '検索中…';
+  el('search-results').innerHTML = '';
+  try {
+    const query = `?q=${encodeURIComponent(q)}&provider=${encodeURIComponent(state.search.provider)}`;
+    const data = await api(`/search${query}`);
+    state.search.data = data;
+    if (data.credits) state.search.credits = data.credits;
+    renderSearchCredits();
+    renderExternalLinks();
+    renderSearchNotice();
+    renderSearchResults();
+    renderPaneHistory();
+    const failure = (data.notices || []).find((n) => n.includes('失敗'));
+    if (failure) toast(failure, 'error');
+  } catch (e) {
+    el('search-results').innerHTML = '';
+    el('search-results').appendChild(makeNode('p', 'empty', `検索に失敗しました: ${e.message}`));
+    toast(e.message, 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = '検索';
+  }
+}
+
 /* ---------- 初期化 ---------- */
 function bindEvents() {
   el('btn-add').addEventListener('click', submitPurchase);
@@ -500,6 +886,20 @@ function bindEvents() {
 
   el('btn-update').addEventListener('click', runUpdate);
 
+  // 通販検索ペイン
+  el('btn-search').addEventListener('click', () => toggleSearchPane());
+  el('btn-search-close').addEventListener('click', () => toggleSearchPane(false));
+  el('btn-search-run').addEventListener('click', runSearch);
+  el('search-q').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      runSearch();
+    }
+  });
+  el('search-sort').addEventListener('change', renderSearchResults);
+  el('search-only-matches').addEventListener('change', renderPaneHistory);
+  renderSearchTabs();
+
   el('btn-export').addEventListener('click', openExportDialog);
   el('btn-export-close').addEventListener('click', () => el('export-dialog').close());
   el('btn-export-json').addEventListener('click', () => {
@@ -525,7 +925,10 @@ function bindEvents() {
   el('btn-restart').addEventListener('click', restartService);
 }
 
+let initialized = false;
 async function init() {
+  if (initialized) return;
+  initialized = true;
   el('input-date').value = todayString();
   bindEvents();
   try {

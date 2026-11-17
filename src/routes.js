@@ -15,6 +15,7 @@ const {
 } = require('./db');
 const { updateFromGitHub } = require('./git');
 const { scheduleRestart } = require('./service');
+const searchService = require('./search');
 
 const router = express.Router();
 
@@ -44,6 +45,21 @@ router.get('/purchases', (req, res) => {
 router.get('/stats', (req, res) => {
   const name = (req.query.name || '').toString().trim();
   res.json({ stats: statsFor(name) });
+});
+
+/* ---------- 通販検索 (Easyparser / 楽天はサーバー側でのみ認証情報を利用) ---------- */
+router.get('/search/providers', (req, res) => {
+  res.json(searchService.getStatus());
+});
+
+router.get('/search', async (req, res) => {
+  const q = (req.query.q || '').toString().trim();
+  const provider = (req.query.provider || 'all').toString().trim();
+  try {
+    res.json(await searchService.search({ q, provider }));
+  } catch (e) {
+    res.status(500).json({ error: '検索に失敗しました' });
+  }
 });
 
 function parsePurchaseBody(body) {

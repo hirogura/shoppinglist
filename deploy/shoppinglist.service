@@ -1,5 +1,5 @@
 [Unit]
-Description=買い物リスト管理シート v0.4.0 (Shopping List Management Sheet)
+Description=買い物リスト管理シート v0.5.0 (Shopping List Management Sheet)
 After=network.target
 
 [Service]

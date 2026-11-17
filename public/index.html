@@ -11,9 +11,10 @@
     <header class="app-header">
       <div class="brand">
         <h1>買い物リスト管理シート</h1>
-        <span class="version" id="version">v.0.4.0</span>
+        <span class="version" id="version">v.0.5.0</span>
       </div>
       <div class="header-actions">
+        <button type="button" class="btn" id="btn-search" aria-expanded="false">通販で検索</button>
         <button type="button" class="btn" id="btn-export">エクスポート</button>
         <button type="button" class="btn" id="btn-import">インポート</button>
         <button type="button" class="btn" id="btn-update">アップデート</button>
@@ -21,8 +22,9 @@
       </div>
     </header>
 
-    <main>
-      <section class="card entry-card">
+    <div class="app-body" id="app-body">
+      <main>
+        <section class="card entry-card">
         <div class="edit-banner hidden" id="edit-banner">
           <span id="edit-banner-text">編集中</span>
           <button type="button" class="btn btn-small btn-ghost" id="btn-edit-cancel">編集を解除</button>
@@ -127,8 +129,48 @@
           </table>
           <p class="empty" id="empty-message">まだ購入履歴がありません。</p>
         </div>
-      </section>
-    </main>
+        </section>
+      </main>
+
+      <aside class="search-pane hidden" id="search-pane" aria-label="通販検索">
+        <div class="pane-head">
+          <div>
+            <h2>通販で検索</h2>
+            <span class="pane-subtitle">Amazon / 楽天 / ヨドバシ.com</span>
+          </div>
+          <button type="button" class="pane-close" id="btn-search-close" aria-label="閉じる">✕</button>
+        </div>
+        <div class="pane-body">
+          <div class="pane-search-row">
+            <input type="text" id="search-q" placeholder="商品名・型番を入力" autocomplete="off" />
+            <button type="button" class="btn btn-primary" id="btn-search-run">検索</button>
+          </div>
+          <div class="pane-controls">
+            <div class="search-tabs" id="search-providers"></div>
+            <select id="search-sort" aria-label="並び替え">
+              <option value="cheap">安い順</option>
+              <option value="expensive">高い順</option>
+              <option value="rating">評価順</option>
+              <option value="reviews">レビュー件数順</option>
+            </select>
+          </div>
+          <p class="pane-note" id="search-note"></p>
+          <div class="pane-credits" id="search-credits"></div>
+          <div class="search-links" id="search-links"></div>
+          <div class="search-results" id="search-results"></div>
+          <section class="pane-history">
+            <div class="pane-history-head">
+              <h3>過去の購入商品</h3>
+              <label class="pane-check">
+                <input type="checkbox" id="search-only-matches" />
+                <span>検索結果と一致するものだけ</span>
+              </label>
+            </div>
+            <div id="search-history"></div>
+          </section>
+        </div>
+      </aside>
+    </div>
 
     <dialog id="update-dialog" class="dialog">
       <form method="dialog" class="dialog-form">
