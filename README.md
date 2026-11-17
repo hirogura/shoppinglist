@@ -13,6 +13,7 @@
 - **履歴一覧** — 商品名が空のときは全履歴を日付の新しい順に表示
 - **クリア** — 「追加」の右の「クリア」で入力内容を解除し、全履歴の表示に戻せる
 - **編集** — 履歴の「編集」から商品名・メモ・日付・購入店・値段・URL を修正できる (商品名の付け替えも可)
+- **設定** — 通販検索で使う Easyparser キー・楽天アプリ ID などを画面から登録。認証情報はワークスペース外の `/opt/shoppinglist-data/search-config.json` に保存され、ブラウザへはマスク済みの値しか返されません
 - **通販で検索** — 「エクスポート」の左のボタンで右側に専用ペインを開き、Amazon / 楽天 / ヨドバシ.com を横断検索。検索結果と過去の購入商品を同じ画面で確認でき、結果から購入履歴フォームへ転記できる
 - **エクスポート** — 購入履歴を JSON (バックアップ・再インポート用) / CSV (Excel 用) で書き出す
 - **インポート** — エクスポートした JSON ファイルを読み込み、マージまたは全置換で取り込む
@@ -22,7 +23,7 @@
 ## 画面
 
 ```
-買い物リスト管理シート  v.0.5.0   [通販で検索] [エクスポート] [インポート] [アップデート] [再起動]
+買い物リスト管理シート  v.0.6.0   [設定] [通販で検索] [エクスポート] [インポート] [アップデート] [再起動]
 ┌──────────────────────────────────────────────────┐ ┌──────────────────────┐
 │ 日付 │ 商品名 ▼ │ メモ │ 購入店 ▼ │ 値段 │ URL …  │ │ 通販で検索       [✕] │
 ├──────────────────────────────────────────────────┤ │ [キーワード] [検索]  │
@@ -40,6 +41,7 @@
 
 | バージョン | 内容 |
 | --- | --- |
+| v.0.6.0 | ヘッダーに「設定」ダイアログを追加。Easyparser キー・楽天アプリ ID・換算レート・タイムアウトをワークスペース外の `/opt/shoppinglist-data/search-config.json` に保存できるようにした |
 | v.0.5.0 | 「通販で検索」ペインを追加。Amazon (Easyparser) / 楽天 (公式 API) の商品検索とヨドバシ.com への直接検索リンクによる横断検索、検索結果と購入履歴の照合・転記に対応 |
 | v.0.4.0 | 登録データの保存先を `/opt/shoppinglist-data` に変更し、アップデート設定ダイアログを廃止して直接アップデートできるようにした |
 | v.0.3.0 | 「クリア」ボタン (入力内容の解除・全履歴表示に戻す) を追加 |
@@ -114,25 +116,34 @@ PORT=8080 npm start # ポート変更
 
 ### API キーの設定 (任意)
 
-認証情報は **サーバー側の環境変数だけ** に保持し、ブラウザやリポジトリには書き込みません。未設定のサイトは直接検索リンクだけを表示し、API を呼びません。
+ヘッダーの「設定」を押すと、以下の項目を登録できます。入力内容はサーバーに送信され、**ワークスペース外** の `/opt/shoppinglist-data/search-config.json` (権限 0600) に保存されます。ブラウザへ返されるのは末尾 4 文字だけを残したマスク値なので、再表示時にキー全体が漏れることはありません。
 
-| 変数 | 説明 |
+| 項目 | 説明 |
 | --- | --- |
-| `EASYPARSER_API_KEY` | Amazon 検索用の [Easyparser](https://easyparser.com/) API キー (SEARCH 1 クレジット) |
-| `RAKUTEN_APP_ID` | 楽天市場 商品検索 API のアプリケーション ID |
-| `EASYPARSER_ENDPOINT` | Easyparser Realtime API の URL (既定: `https://realtime.easyparser.com/v1/request`) |
-| `SHOPPINGLIST_USD_JPY` | ドル建て価格の円換算レート (既定: `160`) |
-| `SHOPPINGLIST_SEARCH_TIMEOUT` | 検索のタイムアウト ms (既定: `45000`) |
+| Easyparser API キー | Amazon 検索用の [Easyparser](https://easyparser.com/) API キー (SEARCH 1 クレジット) |
+| 楽天 アプリケーション ID | 楽天市場 商品検索 API のアプリケーション ID |
+| 円換算レート | ドル建てで返った検索価格を円に換算するレート (既定: `160`) |
+| タイムアウト | 検索リクエストのタイムアウト ms (既定: `45000`) |
 
-systemd サービスに設定する場合は、リポジトリを編集せずドロップインを使ってください。
+キーを空欄のまま「保存」すると既存の値は維持されます。削除したい場合は「保存済みのキーを削除する」にチェックを付けてください。未設定のサイトは直接検索リンクだけを表示し、API を呼びません。
+
+環境変数でも設定できます (環境変数が設定ファイルより優先されます)。リポジトリを編集せず systemd のドロップインを使ってください。
 
 ```bash
 sudo systemctl edit shoppinglist
 # [Service]
-# Environment=EASYPARSER_API_KEY=あなたのキー
-# Environment=RAKUTEN_APP_ID=あなたのアプリID
+# Environment=EASYPARSER_API_KEY=<キー>
+# Environment=RAKUTEN_APP_ID=<アプリID>
 sudo systemctl restart shoppinglist
 ```
+
+| 変数 | 説明 |
+| --- | --- |
+| `EASYPARSER_API_KEY` | Amazon 検索用の Easyparser API キー |
+| `RAKUTEN_APP_ID` | 楽天市場 商品検索 API のアプリケーション ID |
+| `EASYPARSER_ENDPOINT` | Easyparser Realtime API の URL (既定: `https://realtime.easyparser.com/v1/request`) |
+| `SHOPPINGLIST_USD_JPY` | ドル建て価格の円換算レート (既定: `160`) |
+| `SHOPPINGLIST_SEARCH_TIMEOUT` | 検索のタイムアウト ms (既定: `45000`) |
 
 ヨドバシ.com は公開 API がないため、常に直接検索リンクを表示します。残りクレジットは検索レスポンスに含まれる値を表示するだけなので、表示用の追加リクエストは発生しません。
 
@@ -167,6 +178,8 @@ sudo systemctl restart shoppinglist
 | GET | `/api/state?name=` | 購入履歴・価格統計・商品名一覧・購入店一覧をまとめて取得 |
 | GET | `/api/purchases?name=` | 購入履歴 (商品名指定時は該当のみ) |
 | GET | `/api/stats?name=` | 指定商品の 最安値 / 平均 / 最高値 / 購入回数 |
+| GET | `/api/settings` | 通販検索の設定状況 (キーはマスク済み) |
+| PUT | `/api/settings` | 通販検索の設定を保存 (ワークスペース外の JSON ファイルへ書き出し) |
 | GET | `/api/search/providers` | 検索サイトの設定状況・直接検索 URL・残クレジット (クレジット消費なし) |
 | GET | `/api/search?q=&provider=` | 通販横断検索 (`provider`: `all` / `amazon` / `rakuten` / `yodobashi`) |
 | POST | `/api/purchases` | 購入履歴の登録 (日付 / 商品名 / メモ / 購入店 / 値段 / URL) |
@@ -188,6 +201,7 @@ src/routes.js      API
 src/git.js         GitHub アップデート処理
 src/service.js     systemd 再起動
 src/search.js      通販検索プロキシ (Easyparser / 楽天 / 直接検索リンク)
+src/search-config.js 認証情報の保存先管理 (/opt/shoppinglist-data/search-config.json)
 public/            フロントエンド (Vanilla JS / CSS)
 deploy/            systemd ユニット・インストールスクリプト
 test/              API・アップデート・フロント (E2E) のテスト

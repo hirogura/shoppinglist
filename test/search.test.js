@@ -2,14 +2,29 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const EMPTY_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'shoppinglist-search-empty-'));
+process.env.SHOPPINGLIST_DATA_DIR = EMPTY_DATA_DIR;
 
 const search = require('../src/search');
 
-const NO_KEYS = { EASYPARSER_API_KEY: '', RAKUTEN_APP_ID: '' };
+const NO_KEYS = {
+  SHOPPINGLIST_DATA_DIR: EMPTY_DATA_DIR,
+  EASYPARSER_API_KEY: '',
+  RAKUTEN_APP_ID: '',
+};
 const WITH_KEYS = {
+  SHOPPINGLIST_DATA_DIR: EMPTY_DATA_DIR,
   EASYPARSER_API_KEY: 'EASY-SECRET-1234',
   RAKUTEN_APP_ID: 'RAKUTEN-SECRET-5678',
 };
+
+test.after(() => {
+  fs.rmSync(EMPTY_DATA_DIR, { recursive: true, force: true });
+});
 
 function fetchStub(routes, calls) {
   return async (url) => {

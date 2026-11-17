@@ -3,7 +3,7 @@
 const el = (id) => document.getElementById(id);
 
 const state = {
-  version: '0.5.0',
+  version: '0.6.0',
   stores: [],
   productNames: [],
   purchases: [],
@@ -526,6 +526,69 @@ async function runImport() {
   }
 }
 
+/* ---------- 通販検索の設定 ---------- */
+function settingHint(entry) {
+  if (!entry.configured) return '未設定';
+  const source = entry.source === 'env' ? '（環境変数で設定中・保存より優先）' : '';
+  return `保存済み: ${entry.masked} ${source}`;
+}
+
+async function openSettingsDialog() {
+  try {
+    const settings = await api('/settings');
+    el('settings-easyparser').value = '';
+    el('settings-rakuten').value = '';
+    el('settings-easyparser').placeholder = settings.easyparserKey.configured
+      ? settings.easyparserKey.masked
+      : '未設定';
+    el('settings-rakuten').placeholder = settings.rakutenAppId.configured
+      ? settings.rakutenAppId.masked
+      : '未設定';
+    el('settings-easyparser-hint').textContent = settingHint(settings.easyparserKey);
+    el('settings-rakuten-hint').textContent = settingHint(settings.rakutenAppId);
+    el('settings-clear-easyparser-label').classList.toggle('hidden', !settings.easyparserKey.configured);
+    el('settings-clear-rakuten-label').classList.toggle('hidden', !settings.rakutenAppId.configured);
+    el('settings-clear-easyparser').checked = false;
+    el('settings-clear-rakuten').checked = false;
+    el('settings-usdjpy').value = settings.usdJpy;
+    el('settings-timeout').value = settings.timeout;
+    el('settings-path').textContent = settings.storagePath;
+    el('settings-dialog').showModal();
+  } catch (e) {
+    toast(`設定の読み込みに失敗しました: ${e.message}`, 'error');
+  }
+}
+
+async function saveSettings() {
+  const body = {
+    usdJpy: Number(el('settings-usdjpy').value),
+    timeout: Number(el('settings-timeout').value),
+  };
+  const easyparser = el('settings-easyparser').value.trim();
+  if (easyparser) body.easyparserKey = easyparser;
+  else if (el('settings-clear-easyparser').checked) body.easyparserKey = '';
+
+  const rakuten = el('settings-rakuten').value.trim();
+  if (rakuten) body.rakutenAppId = rakuten;
+  else if (el('settings-clear-rakuten').checked) body.rakutenAppId = '';
+
+  const button = el('btn-settings-save');
+  button.disabled = true;
+  try {
+    await api('/settings', { method: 'PUT', body: JSON.stringify(body) });
+    el('settings-dialog').close();
+    toast('設定を保存しました', 'ok');
+    if (state.search.open) {
+      state.search.providers = [];
+      await loadSearchProviders();
+    }
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
 /* ---------- 通販検索ペイン ---------- */
 function toggleSearchPane(open) {
   const pane = el('search-pane');
@@ -885,6 +948,19 @@ function bindEvents() {
   });
 
   el('btn-update').addEventListener('click', runUpdate);
+
+  // 通販検索の設定
+  el('btn-settings').addEventListener('click', openSettingsDialog);
+  el('btn-settings-close').addEventListener('click', () => el('settings-dialog').close());
+  el('btn-settings-save').addEventListener('click', saveSettings);
+  for (const id of ['settings-easyparser', 'settings-rakuten']) {
+    el(id).addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveSettings();
+      }
+    });
+  }
 
   // 通販検索ペイン
   el('btn-search').addEventListener('click', () => toggleSearchPane());

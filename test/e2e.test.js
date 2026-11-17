@@ -388,3 +388,61 @@ test('通販検索ペインで検索結果と購入履歴を同じ画面で確�
   assert.strictEqual(result.filled.store, 'Amazon');
   assert.match(result.filled.memo, new RegExp(asin));
 });
+
+test('設定ダイアログから Easyparser キーを登録・削除できる', async () => {
+  const { result, errors } = await runInBrowser(async (window) => {
+    const doc = window.document;
+    const actions = [...doc.querySelectorAll('.header-actions .btn')].map((b) => b.textContent);
+    const settingsIndex = actions.indexOf('設定');
+    const searchIndex = actions.indexOf('通販で検索');
+
+    click(window, 'btn-settings');
+    await wait(300);
+    const opened = doc.getElementById('settings-dialog').open;
+    const path = doc.getElementById('settings-path').textContent;
+
+    type(window, 'settings-easyparser', 'UI-KEY-WXYZ');
+    doc.getElementById('settings-usdjpy').value = '140';
+    click(window, 'btn-settings-save');
+    await wait(400);
+    const closedAfterSave = !doc.getElementById('settings-dialog').open;
+    const savedToast = doc.getElementById('toast').textContent;
+
+    const { body: saved } = await api('/api/settings');
+
+    click(window, 'btn-settings');
+    await wait(300);
+    const hint = doc.getElementById('settings-easyparser-hint').textContent;
+    const clearVisible = !doc.getElementById('settings-clear-easyparser-label').classList.contains('hidden');
+    doc.getElementById('settings-clear-easyparser').checked = true;
+    click(window, 'btn-settings-save');
+    await wait(400);
+    const { body: cleared } = await api('/api/settings');
+
+    return {
+      settingsIndex,
+      searchIndex,
+      opened,
+      path,
+      closedAfterSave,
+      savedToast,
+      saved,
+      hint,
+      clearVisible,
+      cleared,
+    };
+  });
+
+  assert.deepStrictEqual(errors, [], 'フロントでエラーが発生しています');
+  assert.ok(result.settingsIndex >= 0 && result.settingsIndex < result.searchIndex, '設定ボタンが通販ボタンの左にありません');
+  assert.strictEqual(result.opened, true, '設定ダイアログが開きませんでした');
+  assert.match(result.path, /search-config\.json$/);
+  assert.strictEqual(result.closedAfterSave, true, '保存後にダイアログが閉じませんでした');
+  assert.match(result.savedToast, /保存しました/);
+  assert.strictEqual(result.saved.easyparserKey.masked, '****WXYZ');
+  assert.strictEqual(result.saved.usdJpy, 140);
+  assert.ok(!JSON.stringify(result.saved).includes('UI-KEY-WXYZ'));
+  assert.match(result.hint, /\*\*\*\*WXYZ/);
+  assert.strictEqual(result.clearVisible, true);
+  assert.strictEqual(result.cleared.easyparserKey.configured, false);
+});

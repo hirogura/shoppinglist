@@ -11,9 +11,10 @@
     <header class="app-header">
       <div class="brand">
         <h1>買い物リスト管理シート</h1>
-        <span class="version" id="version">v.0.5.0</span>
+        <span class="version" id="version">v.0.6.0</span>
       </div>
       <div class="header-actions">
+        <button type="button" class="btn" id="btn-settings">設定</button>
         <button type="button" class="btn" id="btn-search" aria-expanded="false">通販で検索</button>
         <button type="button" class="btn" id="btn-export">エクスポート</button>
         <button type="button" class="btn" id="btn-import">インポート</button>
@@ -197,6 +198,48 @@
         </div>
         <div class="dialog-actions">
           <button type="button" class="btn" id="btn-export-close">閉じる</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="settings-dialog" class="dialog">
+      <form method="dialog" class="dialog-form">
+        <h2>通販検索の設定</h2>
+        <p class="dialog-desc">
+          認証情報はワークスペース外 (<code id="settings-path">/opt/shoppinglist-data/search-config.json</code>)
+          に保存され、ブラウザへはマスク済みの値しか返されません。
+        </p>
+        <div class="dialog-field">
+          <label for="settings-easyparser">Easyparser API キー</label>
+          <input type="password" id="settings-easyparser" autocomplete="new-password" placeholder="未設定" />
+          <span class="hint" id="settings-easyparser-hint"></span>
+          <label class="dialog-check hidden" id="settings-clear-easyparser-label">
+            <input type="checkbox" id="settings-clear-easyparser" />
+            <span>保存済みのキーを削除する</span>
+          </label>
+        </div>
+        <div class="dialog-field">
+          <label for="settings-rakuten">楽天 アプリケーション ID</label>
+          <input type="password" id="settings-rakuten" autocomplete="new-password" placeholder="未設定" />
+          <span class="hint" id="settings-rakuten-hint"></span>
+          <label class="dialog-check hidden" id="settings-clear-rakuten-label">
+            <input type="checkbox" id="settings-clear-rakuten" />
+            <span>保存済みの ID を削除する</span>
+          </label>
+        </div>
+        <div class="settings-grid">
+          <div class="dialog-field">
+            <label for="settings-usdjpy">円換算レート (円/ドル)</label>
+            <input type="number" id="settings-usdjpy" min="1" max="10000" step="1" value="160" />
+          </div>
+          <div class="dialog-field">
+            <label for="settings-timeout">タイムアウト (ms)</label>
+            <input type="number" id="settings-timeout" min="1000" max="300000" step="1000" value="45000" />
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="btn" id="btn-settings-close">キャンセル</button>
+          <button type="button" class="btn btn-primary" id="btn-settings-save">保存</button>
         </div>
       </form>
     </dialog>

@@ -16,6 +16,7 @@ const {
 const { updateFromGitHub } = require('./git');
 const { scheduleRestart } = require('./service');
 const searchService = require('./search');
+const searchConfig = require('./search-config');
 
 const router = express.Router();
 
@@ -45,6 +46,20 @@ router.get('/purchases', (req, res) => {
 router.get('/stats', (req, res) => {
   const name = (req.query.name || '').toString().trim();
   res.json({ stats: statsFor(name) });
+});
+
+/* ---------- 通販検索の設定 (キーはワークスペース外のファイルに保存) ---------- */
+router.get('/settings', (req, res) => {
+  res.json(searchConfig.getSettings());
+});
+
+router.put('/settings', (req, res) => {
+  try {
+    const settings = searchConfig.save(req.body || {});
+    res.json({ ok: true, settings });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 /* ---------- 通販検索 (Easyparser / 楽天はサーバー側でのみ認証情報を利用) ---------- */

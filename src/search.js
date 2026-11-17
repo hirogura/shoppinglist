@@ -3,6 +3,9 @@
 // 通販サイト検索のプロキシ。Easyparser / Rakuten の認証情報はサーバー側の
 // 環境変数だけで保持し、レスポンス・HTML・JS には一切含めない。
 // API が未設定のサイトは「直接検索リンク」のみを返し、クレジットを消費しない。
+// 認証情報は環境変数、またはワークスペース外に保存した設定ファイルから取得する。
+
+const searchConfig = require('./search-config');
 
 const DEFAULT_ENDPOINT = 'https://realtime.easyparser.com/v1/request';
 const RAKUTEN_ENDPOINT =
@@ -21,8 +24,9 @@ const PROVIDERS = [
 let lastCredits = null;
 
 function getConfig(env = process.env) {
-  const key = String(env.EASYPARSER_API_KEY || '').trim();
-  const rakutenAppId = String(env.RAKUTEN_APP_ID || '').trim();
+  const stored = searchConfig.load(env);
+  const key = String(env.EASYPARSER_API_KEY || '').trim() || stored.easyparserKey;
+  const rakutenAppId = String(env.RAKUTEN_APP_ID || '').trim() || stored.rakutenAppId;
   const usdJpy = Number(env.SHOPPINGLIST_USD_JPY);
   const timeout = Number(env.SHOPPINGLIST_SEARCH_TIMEOUT);
   return {
@@ -30,8 +34,10 @@ function getConfig(env = process.env) {
     rakutenAppId,
     endpoint: String(env.EASYPARSER_ENDPOINT || DEFAULT_ENDPOINT),
     rakutenEndpoint: String(env.RAKUTEN_ENDPOINT || RAKUTEN_ENDPOINT),
-    usdJpy: Number.isFinite(usdJpy) && usdJpy > 0 ? usdJpy : DEFAULT_USD_JPY,
-    timeout: Number.isFinite(timeout) && timeout >= 1000 ? timeout : DEFAULT_TIMEOUT_MS,
+    usdJpy:
+      Number.isFinite(usdJpy) && usdJpy > 0 ? usdJpy : stored.usdJpy || DEFAULT_USD_JPY,
+    timeout:
+      Number.isFinite(timeout) && timeout >= 1000 ? timeout : stored.timeout || DEFAULT_TIMEOUT_MS,
   };
 }
 
