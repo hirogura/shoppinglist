@@ -3,7 +3,7 @@
 const el = (id) => document.getElementById(id);
 
 const state = {
-  version: '0.6.1',
+  version: '0.7.0',
   stores: [],
   productNames: [],
   purchases: [],
@@ -18,6 +18,7 @@ const state = {
     providers: [],
     credits: null,
     notices: [],
+    showImages: false,
   },
 };
 
@@ -550,6 +551,7 @@ async function openSettingsDialog() {
     el('settings-clear-rakuten-label').classList.toggle('hidden', !settings.rakutenAppId.configured);
     el('settings-clear-easyparser').checked = false;
     el('settings-clear-rakuten').checked = false;
+    el('settings-show-images').checked = Boolean(settings.showImages);
     el('settings-usdjpy').value = settings.usdJpy;
     el('settings-timeout').value = settings.timeout;
     el('settings-path').textContent = settings.storagePath;
@@ -563,6 +565,7 @@ async function saveSettings() {
   const body = {
     usdJpy: Number(el('settings-usdjpy').value),
     timeout: Number(el('settings-timeout').value),
+    showImages: el('settings-show-images').checked,
   };
   const easyparser = el('settings-easyparser').value.trim();
   if (easyparser) body.easyparserKey = easyparser;
@@ -579,8 +582,8 @@ async function saveSettings() {
     el('settings-dialog').close();
     toast('設定を保存しました', 'ok');
     if (state.search.open) {
-      state.search.providers = [];
       await loadSearchProviders();
+      renderSearchResults();
     }
   } catch (e) {
     toast(e.message, 'error');
@@ -598,7 +601,7 @@ function toggleSearchPane(open) {
   state.search.open = willOpen;
   el('btn-search').setAttribute('aria-expanded', String(willOpen));
   if (willOpen) {
-    if (!state.search.providers.length) loadSearchProviders();
+    loadSearchProviders();
     renderExternalLinks();
     renderPaneHistory();
     setTimeout(() => el('search-q').focus(), 0);
@@ -611,9 +614,11 @@ async function loadSearchProviders() {
     state.search.providers = data.providers || [];
     state.search.credits = data.credits || null;
     state.search.notices = data.notices || [];
+    state.search.showImages = Boolean(data.showImages);
     renderSearchTabs();
     renderSearchCredits();
     renderSearchNotice();
+    renderSearchResults();
   } catch (e) {
     el('search-note').textContent = `検索設定の取得に失敗しました: ${e.message}`;
   }
@@ -713,6 +718,25 @@ function sortedSearchItems(items) {
 
 function buildResultCard(item) {
   const card = makeNode('article', 'result-card');
+
+  // 設定で有効なときだけ画像を挿入する (既定はテキストのみのシンプル表示)
+  if (state.search.showImages) {
+    const imageWrap = makeNode('div', 'result-image');
+    const imageUrl = safeUrl(item.imageUrl);
+    if (imageUrl) {
+      const img = document.createElement('img');
+      img.src = imageUrl;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.referrerPolicy = 'no-referrer';
+      img.addEventListener('error', () => imageWrap.classList.add('hidden'));
+      imageWrap.appendChild(img);
+    } else {
+      imageWrap.appendChild(makeNode('span', 'image-placeholder', '📦'));
+    }
+    card.appendChild(imageWrap);
+  }
+
   const top = makeNode('div', 'result-top');
   const label = SEARCH_LABELS[item.provider] || item.providerLabel || item.provider || '通販';
   top.appendChild(makeNode('span', `provider-tag ${item.provider || ''}`, label));

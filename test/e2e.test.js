@@ -320,7 +320,7 @@ test('通販検索ペインで検索結果と購入履歴を同じ画面で確�
         asin,
         title: '検索対象商品 最新モデル',
         brand: 'テスト',
-        imageUrl: null,
+        imageUrl: 'https://example.com/item.jpg',
         price: 800,
         priceText: '目安 ¥800',
         estimate: true,
@@ -383,9 +383,47 @@ test('通販検索ペインで検索結果と購入履歴を同じ画面で確�
       memo: doc.getElementById('input-memo').value,
     };
 
+    // 設定のチェックボックスで画像表示を切り替えられること
+    click(window, 'btn-settings');
+    await wait(200);
+    const imageDefault = doc.getElementById('settings-show-images').checked;
+    doc.getElementById('settings-show-images').checked = true;
+    click(window, 'btn-settings-save');
+    await wait(400);
+    const imagesWhenEnabled = doc.querySelectorAll('#search-results .result-image img').length;
+    const imageSrc = doc.querySelector('#search-results .result-image img').src;
+
+    click(window, 'btn-settings');
+    await wait(200);
+    doc.getElementById('settings-show-images').checked = false;
+    click(window, 'btn-settings-save');
+    await wait(400);
+    const imagesWhenDisabled = doc.querySelectorAll('#search-results .result-image').length;
+
+    // ペインを閉じた状態で変更しても、次に開いたときに反映されること
     click(window, 'btn-search-close');
     const paneClosed = doc.getElementById('search-pane').classList.contains('hidden');
+    click(window, 'btn-settings');
+    await wait(200);
+    doc.getElementById('settings-show-images').checked = true;
+    click(window, 'btn-settings-save');
+    await wait(400);
+    click(window, 'btn-search');
+    await wait(300);
+    const imagesAfterReopen = doc.querySelectorAll('#search-results .result-image img').length;
+
+    click(window, 'btn-settings');
+    await wait(200);
+    doc.getElementById('settings-show-images').checked = false;
+    click(window, 'btn-settings-save');
+    await wait(400);
+
     return {
+      imageDefault,
+      imagesWhenEnabled,
+      imageSrc,
+      imagesWhenDisabled,
+      imagesAfterReopen,
       paneOpened,
       paneClosed,
       tabs,
@@ -418,6 +456,11 @@ test('通販検索ペインで検索結果と購入履歴を同じ画面で確�
   assert.strictEqual(result.filled.url, productUrl);
   assert.strictEqual(result.filled.store, 'Amazon');
   assert.match(result.filled.memo, new RegExp(asin));
+  assert.strictEqual(result.imageDefault, false, '画像表示が既定でオフではありません');
+  assert.strictEqual(result.imagesWhenEnabled, 1, '設定を有効にしても画像が表示されません');
+  assert.match(result.imageSrc, /example\.com\/item\.jpg/);
+  assert.strictEqual(result.imagesWhenDisabled, 0, '設定をオフにしても画像が残っています');
+  assert.strictEqual(result.imagesAfterReopen, 1, 'ペインを閉じた間の設定変更が再表示に反映されません');
 });
 
 test('設定ダイアログから Easyparser キーを登録・削除できる', async () => {

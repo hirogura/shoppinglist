@@ -340,6 +340,7 @@ test('エクスポート→インポートでデータが復元できる', async
 test('通販検索の設定を保存するとワークスペース外のファイルに記録される', async () => {
   const { body: before } = await api('/api/settings');
   assert.strictEqual(before.easyparserKey.configured, false);
+  assert.strictEqual(before.showImages, false);
   assert.ok(before.storagePath.startsWith(DATA_DIR));
 
   const { status, body } = await api('/api/settings', {
@@ -348,10 +349,12 @@ test('通販検索の設定を保存するとワークスペース外のファ�
       easyparserKey: 'API-KEY-ABCD1234',
       rakutenAppId: 'RAKUTEN-ID-5678',
       usdJpy: 150,
+      showImages: true,
     }),
   });
   assert.strictEqual(status, 200);
   assert.strictEqual(body.settings.easyparserKey.masked, '****1234');
+  assert.strictEqual(body.settings.showImages, true);
   assert.ok(!JSON.stringify(body).includes('API-KEY-ABCD1234'));
   assert.ok(fs.existsSync(path.join(DATA_DIR, 'search-config.json')));
 
@@ -364,14 +367,16 @@ test('通販検索の設定を保存するとワークスペース外のファ�
 test('通販検索の設定はマスクされた値だけが返り、削除もできる', async () => {
   const { body } = await api('/api/settings');
   assert.strictEqual(body.easyparserKey.configured, true);
+  assert.strictEqual(body.showImages, true);
   assert.ok(!JSON.stringify(body).includes('API-KEY-ABCD1234'));
 
   const { status } = await api('/api/settings', {
     method: 'PUT',
-    body: JSON.stringify({ easyparserKey: '' }),
+    body: JSON.stringify({ easyparserKey: '', showImages: false }),
   });
   assert.strictEqual(status, 200);
   const { body: after } = await api('/api/settings');
   assert.strictEqual(after.easyparserKey.configured, false);
   assert.strictEqual(after.rakutenAppId.configured, true);
+  assert.strictEqual(after.showImages, false);
 });

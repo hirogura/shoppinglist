@@ -780,6 +780,29 @@ select:focus {
   background: #fff;
 }
 
+.result-image {
+  width: 100%;
+  height: 120px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #eef1f4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.result-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.image-placeholder {
+  font-size: 28px;
+  color: #9aa4b2;
+}
+
 .result-top {
   display: flex;
   align-items: center;

@@ -84,6 +84,7 @@ function getStatus({ env = process.env } = {}) {
     },
     providers,
     credits: lastCredits,
+    showImages: searchConfig.getSettings(env).showImages,
     notices,
   };
 }

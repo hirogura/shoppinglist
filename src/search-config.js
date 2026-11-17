@@ -13,6 +13,7 @@ const DEFAULTS = {
   rakutenAppId: '',
   usdJpy: 160,
   timeout: 45000,
+  showImages: false,
 };
 
 function configPath(env = process.env) {
@@ -38,6 +39,14 @@ function positiveNumber(value, fallback, min, max, label) {
   return num;
 }
 
+function normalizeBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  const text = String(value == null ? '' : value).trim().toLowerCase();
+  if (['true', '1', 'on', 'yes'].includes(text)) return true;
+  if (['false', '0', 'off', 'no', ''].includes(text)) return false;
+  throw new Error('画像表示の設定が不正です');
+}
+
 function load(env = process.env) {
   let parsed = null;
   try {
@@ -54,6 +63,7 @@ function load(env = process.env) {
       Number(parsed.usdJpy) > 0 ? Number(parsed.usdJpy) : DEFAULTS.usdJpy,
     timeout:
       Number(parsed.timeout) >= 1000 ? Number(parsed.timeout) : DEFAULTS.timeout,
+    showImages: parsed.showImages === true,
     updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
   };
 }
@@ -65,6 +75,7 @@ function save(values = {}, env = process.env) {
     rakutenAppId: current.rakutenAppId,
     usdJpy: current.usdJpy,
     timeout: current.timeout,
+    showImages: current.showImages,
   };
 
   // 送信された項目だけ更新する。空文字は「削除」として扱う。
@@ -79,6 +90,9 @@ function save(values = {}, env = process.env) {
   }
   if (Object.prototype.hasOwnProperty.call(values, 'timeout')) {
     next.timeout = positiveNumber(values.timeout, DEFAULTS.timeout, 1000, 300000, 'タイムアウト');
+  }
+  if (Object.prototype.hasOwnProperty.call(values, 'showImages')) {
+    next.showImages = normalizeBoolean(values.showImages);
   }
   next.updatedAt = new Date().toISOString();
 
@@ -129,6 +143,7 @@ function getSettings(env = process.env) {
     },
     usdJpy: effective.usdJpy,
     timeout: effective.timeout,
+    showImages: stored.showImages,
     updatedAt: stored.updatedAt,
     storagePath: configPath(env),
   };
