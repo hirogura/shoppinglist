@@ -334,8 +334,10 @@ test('通販検索ペインで検索結果と購入履歴を同じ画面で確�
   const { result, errors } = await runInBrowser(async (window) => {
     const doc = window.document;
     const realFetch = window.fetch;
+    let searchCalls = 0;
     window.fetch = (url, options) => {
       if (String(url).startsWith('/api/search?')) {
+        searchCalls += 1;
         return Promise.resolve({ ok: true, status: 200, json: async () => fakeSearch });
       }
       return realFetch(url, options);
@@ -349,6 +351,19 @@ test('通販検索ペインで検索結果と購入履歴を同じ画面で確�
     const pastRows = [...doc.querySelectorAll('.pane-history-row .phr-name')].map((n) => n.textContent);
 
     type(window, 'search-q', '検索対象商品');
+
+    // 日本語入力の確定 (IME の Enter / 確定後の Enter) では検索されないこと
+    const input = doc.getElementById('search-q');
+    input.dispatchEvent(new window.Event('compositionstart', { bubbles: true }));
+    input.dispatchEvent(
+      new window.KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, isComposing: true, bubbles: true })
+    );
+    input.dispatchEvent(new window.Event('compositionend', { bubbles: true }));
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await wait(150);
+    const callsBeforeButton = searchCalls;
+    const resultsBeforeButton = doc.querySelectorAll('#search-results .result-card').length;
+
     click(window, 'btn-search-run');
     await wait(300);
 
@@ -370,7 +385,20 @@ test('通販検索ペインで検索結果と購入履歴を同じ画面で確�
 
     click(window, 'btn-search-close');
     const paneClosed = doc.getElementById('search-pane').classList.contains('hidden');
-    return { paneOpened, paneClosed, tabs, links, pastRows, badge, price, diff, filled };
+    return {
+      paneOpened,
+      paneClosed,
+      tabs,
+      links,
+      pastRows,
+      badge,
+      price,
+      diff,
+      filled,
+      callsBeforeButton,
+      resultsBeforeButton,
+      searchCalls,
+    };
   });
 
   assert.deepStrictEqual(errors, [], 'フロントでエラーが発生しています');
@@ -379,6 +407,9 @@ test('通販検索ペインで検索結果と購入履歴を同じ画面で確�
   assert.ok(result.tabs.some((t) => t.includes('すべて')), '検索タブが表示されていません');
   assert.ok(result.links >= 3, '各サイトへの直接リンクが表示されていません');
   assert.ok(result.pastRows.includes('検索対象商品'), 'ペインに購入履歴が表示されていません');
+  assert.strictEqual(result.callsBeforeButton, 0, 'Enter キーで検索が実行されました');
+  assert.strictEqual(result.resultsBeforeButton, 0, 'ボタンを押す前に検索結果が表示されました');
+  assert.strictEqual(result.searchCalls, 1, '「検索」ボタンで検索が実行されませんでした');
   assert.match(result.badge, /購入履歴あり/, '検索結果に購入履歴バッジが付きませんでした');
   assert.match(result.price, /800/, '検索結果の価格が表示されていません');
   assert.match(result.diff, /200|買い時/, '価格差が表示されていません');

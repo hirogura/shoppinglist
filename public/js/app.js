@@ -3,7 +3,7 @@
 const el = (id) => document.getElementById(id);
 
 const state = {
-  version: '0.6.0',
+  version: '0.6.1',
   stores: [],
   productNames: [],
   purchases: [],
@@ -966,12 +966,7 @@ function bindEvents() {
   el('btn-search').addEventListener('click', () => toggleSearchPane());
   el('btn-search-close').addEventListener('click', () => toggleSearchPane(false));
   el('btn-search-run').addEventListener('click', runSearch);
-  el('search-q').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      runSearch();
-    }
-  });
+  // 日本語入力の確定 (Enter) で検索が走らないよう、検索は「検索」ボタン押下時だけ実行する
   el('search-sort').addEventListener('change', renderSearchResults);
   el('search-only-matches').addEventListener('change', renderPaneHistory);
   renderSearchTabs();
