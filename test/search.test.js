@@ -165,6 +165,52 @@ test('Amazon 検索はサーバー側で API キーを使い、価格目安と�
   assert.ok(!JSON.stringify(result).includes('EASY-SECRET-1234'));
 });
 
+test('Easyparser の画像 ID / main_image.link から画像 URL を取得できる', async () => {
+  const calls = [];
+  const body = {
+    request_info: { success: true },
+    result: {
+      search_results: [
+        {
+          asin: 'B0G6KDP538',
+          title: '画像URLありの商品',
+          image: '71+vBR2X10L',
+          main_image: {
+            id: '71+vBR2X10L',
+            link: 'https://m.media-amazon.com/images/I/71+vBR2X10L.jpg',
+          },
+          price: { currency: 'USD', value: '10.00' },
+          link: '/dp/B0G6KDP538',
+        },
+        {
+          asin: 'B0G6KDP539',
+          title: '画像IDのみの商品',
+          image: '51N2qVDsS8L',
+          price: { currency: 'JPY', value: '1000' },
+        },
+      ],
+    },
+  };
+
+  const result = await search.search({
+    q: 'テスト',
+    provider: 'amazon',
+    env: WITH_KEYS,
+    fetchImpl: fetchStub([{ prefix: 'https://realtime.easyparser.com/', body }], calls),
+  });
+
+  assert.strictEqual(result.items.length, 2);
+  assert.strictEqual(
+    result.items[0].imageUrl,
+    'https://m.media-amazon.com/images/I/71+vBR2X10L.jpg'
+  );
+  assert.strictEqual(
+    result.items[1].imageUrl,
+    'https://m.media-amazon.com/images/I/51N2qVDsS8L.jpg',
+    '画像 ID だけの場合は Amazon の画像 URL を組み立てる'
+  );
+});
+
 test('楽天検索は公式 API の結果を本アプリの形式に正規化する', async () => {
   const calls = [];
   const result = await search.search({
@@ -184,6 +230,7 @@ test('楽天検索は公式 API の結果を本アプリの形式に正規化す
   assert.strictEqual(result.items[0].title, '楽天テスト商品');
   assert.strictEqual(result.items[0].price, 2280);
   assert.strictEqual(result.items[0].externalId, 'rakuten001');
+  assert.strictEqual(result.items[0].imageUrl, 'https://example.com/rakuten.jpg');
   assert.ok(!JSON.stringify(result).includes('RAKUTEN-SECRET-5678'));
 });
 

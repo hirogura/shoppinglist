@@ -1,6 +1,6 @@
 {
   "name": "shoppinglist",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "買い物リスト管理シート - 購入価格の最安値・平均・最高値を管理するWebアプリ",
   "main": "server.js",

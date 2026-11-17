@@ -3,7 +3,7 @@
 const el = (id) => document.getElementById(id);
 
 const state = {
-  version: '0.7.0',
+  version: '0.7.1',
   stores: [],
   productNames: [],
   purchases: [],
@@ -729,7 +729,10 @@ function buildResultCard(item) {
       img.alt = '';
       img.loading = 'lazy';
       img.referrerPolicy = 'no-referrer';
-      img.addEventListener('error', () => imageWrap.classList.add('hidden'));
+      img.addEventListener('error', () => {
+        img.remove();
+        imageWrap.appendChild(makeNode('span', 'image-placeholder', '📦'));
+      });
       imageWrap.appendChild(img);
     } else {
       imageWrap.appendChild(makeNode('span', 'image-placeholder', '📦'));

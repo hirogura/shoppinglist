@@ -191,18 +191,51 @@ function priceInfo(row, cfg) {
   return { value, jpy, isUsd };
 }
 
-function imageFrom(row) {
-  const direct = pick(row, ['image', 'image_url', 'imageUrl', 'thumbnail', 'main_image']);
-  if (typeof direct === 'string') return safeExternalUrl(direct);
-  if (direct && typeof direct === 'object') {
-    return safeExternalUrl(pick(direct, ['url', 'imageUrl', 'image_url', 'large', 'medium']));
+// Easyparser SEARCH の `image` は "71+vBR2X10L" のような画像 ID で、URL ではない。
+// 完全な URL は `main_image.link` に入っている。ID しか無い場合は Amazon の画像 URL を組み立てる。
+function resolveImageUrl(value) {
+  const text = String(value == null ? '' : value).trim();
+  if (!text) return null;
+  if (/^https?:\/\//i.test(text)) return text;
+  if (text.startsWith('//')) return `https:${text}`;
+  if (/^[A-Za-z0-9+\-_]{6,}$/.test(text)) {
+    return `https://m.media-amazon.com/images/I/${text}.jpg`;
   }
+  return null;
+}
+
+function imageFrom(row) {
+  const candidates = [
+    // 完全な URL が入っている main_image を優先する
+    pick(row, ['main_image', 'mainImage']),
+    pick(row, ['image', 'image_url', 'imageUrl', 'thumbnail', 'thumb_image', 'media']),
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const url = resolveImageUrl(candidate);
+      if (url) return url;
+      continue;
+    }
+    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+      const url = resolveImageUrl(
+        pick(candidate, ['link', 'url', 'imageUrl', 'image_url', 'image', 'thumbnail', 'large', 'medium', 'id'])
+      );
+      if (url) return url;
+    }
+  }
+
   const images = pick(row, ['images', 'imageUrls', 'mediumImageUrls']);
   if (Array.isArray(images) && images.length) {
-    const first = images[0];
-    if (typeof first === 'string') return safeExternalUrl(first);
-    if (first && typeof first === 'object') {
-      return safeExternalUrl(pick(first, ['url', 'imageUrl', 'image_url']));
+    for (const first of images.slice(0, 3)) {
+      if (typeof first === 'string') {
+        const url = resolveImageUrl(first);
+        if (url) return url;
+      } else if (first && typeof first === 'object') {
+        const url = resolveImageUrl(
+          pick(first, ['link', 'url', 'imageUrl', 'image_url', 'image', 'id'])
+        );
+        if (url) return url;
+      }
     }
   }
   return null;
@@ -346,6 +379,7 @@ async function runRakuten(q, cfg, fetchImpl) {
           url: item.itemUrl,
           rating: item.reviewAverage,
           reviews: item.reviewCount,
+          image: item.imageUrl,
           images: item.mediumImageUrls,
         },
         index,
