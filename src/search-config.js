@@ -14,6 +14,7 @@ const DEFAULTS = {
   usdJpy: 160,
   timeout: 45000,
   showImages: false,
+  yodobashiViaJina: false,
 };
 
 function configPath(env = process.env) {
@@ -39,12 +40,12 @@ function positiveNumber(value, fallback, min, max, label) {
   return num;
 }
 
-function normalizeBoolean(value) {
+function normalizeBoolean(value, label = '画像表示') {
   if (typeof value === 'boolean') return value;
   const text = String(value == null ? '' : value).trim().toLowerCase();
   if (['true', '1', 'on', 'yes'].includes(text)) return true;
   if (['false', '0', 'off', 'no', ''].includes(text)) return false;
-  throw new Error('画像表示の設定が不正です');
+  throw new Error(`${label}の設定が不正です`);
 }
 
 function load(env = process.env) {
@@ -64,6 +65,7 @@ function load(env = process.env) {
     timeout:
       Number(parsed.timeout) >= 1000 ? Number(parsed.timeout) : DEFAULTS.timeout,
     showImages: parsed.showImages === true,
+    yodobashiViaJina: parsed.yodobashiViaJina === true,
     updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
   };
 }
@@ -76,6 +78,7 @@ function save(values = {}, env = process.env) {
     usdJpy: current.usdJpy,
     timeout: current.timeout,
     showImages: current.showImages,
+    yodobashiViaJina: current.yodobashiViaJina,
   };
 
   // 送信された項目だけ更新する。空文字は「削除」として扱う。
@@ -93,6 +96,9 @@ function save(values = {}, env = process.env) {
   }
   if (Object.prototype.hasOwnProperty.call(values, 'showImages')) {
     next.showImages = normalizeBoolean(values.showImages);
+  }
+  if (Object.prototype.hasOwnProperty.call(values, 'yodobashiViaJina')) {
+    next.yodobashiViaJina = normalizeBoolean(values.yodobashiViaJina, 'ヨドバシ接続');
   }
   next.updatedAt = new Date().toISOString();
 
@@ -144,6 +150,7 @@ function getSettings(env = process.env) {
     usdJpy: effective.usdJpy,
     timeout: effective.timeout,
     showImages: stored.showImages,
+    yodobashiViaJina: stored.yodobashiViaJina,
     updatedAt: stored.updatedAt,
     storagePath: configPath(env),
   };

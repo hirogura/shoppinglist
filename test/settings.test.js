@@ -23,6 +23,7 @@ test('初期状態は未設定で、保存先はワークスペース外のデ�
   assert.strictEqual(settings.usdJpy, 160);
   assert.strictEqual(settings.timeout, 45000);
   assert.strictEqual(settings.showImages, false);
+  assert.strictEqual(settings.yodobashiViaJina, false);
   assert.strictEqual(settings.storagePath, path.join(DATA_DIR, 'search-config.json'));
   assert.ok(!settings.storagePath.includes('/opt/shoppinglist/'));
 });
@@ -35,6 +36,7 @@ test('保存したキーはファイルに書き出され、API 向けの値は�
       usdJpy: 150,
       timeout: 60000,
       showImages: true,
+      yodobashiViaJina: true,
     },
     env
   );
@@ -48,6 +50,7 @@ test('保存したキーはファイルに書き出され、API 向けの値は�
   assert.strictEqual(result.usdJpy, 150);
   assert.strictEqual(result.timeout, 60000);
   assert.strictEqual(result.showImages, true);
+  assert.strictEqual(result.yodobashiViaJina, true);
   assert.ok(!JSON.stringify(result).includes('EASY-LIVE-KEY-ABCD1234'));
   assert.ok(!JSON.stringify(result).includes('RAKUTEN-LIVE-9876'));
 });
@@ -59,6 +62,7 @@ test('空欄の項目は維持され、削除指定の項目だけ消える', ()
   assert.strictEqual(stored.rakutenAppId, 'RAKUTEN-LIVE-9876');
   assert.strictEqual(stored.usdJpy, 155);
   assert.strictEqual(stored.showImages, true);
+  assert.strictEqual(stored.yodobashiViaJina, true);
 
   config.save({ easyparserKey: '' }, env);
   stored = config.load(env);
@@ -82,6 +86,7 @@ test('不正な値は保存前に拒否される', () => {
   assert.throws(() => config.save({ usdJpy: 0 }, env), /円換算レート/);
   assert.throws(() => config.save({ timeout: 10 }, env), /タイムアウト/);
   assert.throws(() => config.save({ showImages: 'maybe' }, env), /画像表示/);
+  assert.throws(() => config.save({ yodobashiViaJina: 'maybe' }, env), /ヨドバシ接続/);
   assert.strictEqual(config.load(env).easyparserKey, 'FILE-KEY-1111');
 });
 

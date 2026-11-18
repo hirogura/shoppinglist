@@ -13,6 +13,10 @@ const RAKUTEN_ENDPOINT =
 const DEFAULT_USD_JPY = 160;
 const DEFAULT_TIMEOUT_MS = 45000;
 const RESULT_LIMIT = 24;
+// ヨドバシ.com は公開 API が無いため、設定で有効なときだけテキスト抽出プロキシを利用する。
+// 形式: https://r.jina.ai/<取得したいURL>
+const JINA_BASE = 'https://r.jina.ai/';
+const YODOBASHI_SEARCH_BASE = 'https://www.yodobashi.com/?word=';
 
 const PROVIDERS = [
   { id: 'amazon', label: 'Amazon', store: 'Amazon', color: '#ff9900' },
@@ -38,6 +42,7 @@ function getConfig(env = process.env) {
       Number.isFinite(usdJpy) && usdJpy > 0 ? usdJpy : stored.usdJpy || DEFAULT_USD_JPY,
     timeout:
       Number.isFinite(timeout) && timeout >= 1000 ? timeout : stored.timeout || DEFAULT_TIMEOUT_MS,
+    yodobashiViaJina: Boolean(stored.yodobashiViaJina),
   };
 }
 
@@ -56,7 +61,13 @@ function getProviders({ env = process.env, q = '' } = {}) {
   const cfg = getConfig(env);
   return PROVIDERS.map((p) => {
     const configured =
-      p.id === 'amazon' ? Boolean(cfg.key) : p.id === 'rakuten' ? Boolean(cfg.rakutenAppId) : false;
+      p.id === 'amazon'
+        ? Boolean(cfg.key)
+        : p.id === 'rakuten'
+          ? Boolean(cfg.rakutenAppId)
+          : p.id === 'yodobashi'
+            ? cfg.yodobashiViaJina
+            : false;
     return {
       id: p.id,
       label: p.label,
@@ -75,12 +86,20 @@ function getStatus({ env = process.env } = {}) {
   const notices = [];
   if (!cfg.key) notices.push('EASYPARSER_API_KEY を設定すると Amazon の商品検索が利用できます。');
   if (!cfg.rakutenAppId) notices.push('RAKUTEN_APP_ID を設定すると 楽天 の商品検索が利用できます。');
-  notices.push('ヨドバシ.com は API がないため、直接検索リンクを表示します。');
+  if (cfg.yodobashiViaJina) {
+    notices.push(
+      'ヨドバシ.com は r.jina.ai 経由で検索結果を取得します (接続できなかった場合は直接検索リンクを表示します)。'
+    );
+  } else {
+    notices.push(
+      'ヨドバシ.com は設定で「r.jina.ai 経由でヨドバシ.comに接続する」を有効にすると検索結果を取得できます。'
+    );
+  }
   return {
     configured: {
       amazon: Boolean(cfg.key),
       rakuten: Boolean(cfg.rakutenAppId),
-      yodobashi: false,
+      yodobashi: cfg.yodobashiViaJina,
     },
     providers,
     credits: lastCredits,
@@ -97,27 +116,32 @@ function redact(text, cfg) {
   return out;
 }
 
-async function fetchJson(url, cfg, fetchImpl) {
+async function fetchText(url, cfg, fetchImpl, headers) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), cfg.timeout);
   try {
     const res = await fetchImpl(url, {
       signal: controller.signal,
-      headers: { Accept: 'application/json' },
+      ...(headers ? { headers } : {}),
     });
     const text = await res.text();
-    let json = null;
-    try {
-      json = text ? JSON.parse(text) : null;
-    } catch (e) {
-      json = null;
-    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    if (!json || typeof json !== 'object') throw new Error('JSON 応答を取得できませんでした');
-    return json;
+    return text;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function fetchJson(url, cfg, fetchImpl) {
+  const text = await fetchText(url, cfg, fetchImpl, { Accept: 'application/json' });
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch (e) {
+    json = null;
+  }
+  if (!json || typeof json !== 'object') throw new Error('JSON 応答を取得できませんでした');
+  return json;
 }
 
 /* ---------- 値の取り出し ---------- */
@@ -390,6 +414,101 @@ async function runRakuten(q, cfg, fetchImpl) {
   return { items, credits: null };
 }
 
+/* ---------- ヨドバシ.com (r.jina.ai のテキスト抽出プロキシ) ---------- */
+// r.jina.ai が返す Markdown から商品一覧を取り出す。冒頭 ~1000 行は
+// グローバルナビのプロモーション商品なので、「◯件中◯件から◯件までを表示」
+// 以降だけを読む (検索結果の前に似た商品が差し込まれるため)。
+function parseYodobashiText(text) {
+  const lines = String(text == null ? '' : text).split(/\r?\n/);
+  const start = lines.findIndex((line) => /件中\d+件から\d+件までを表示/.test(line));
+  if (start === -1) throw new Error('検索結果の一覧が見つかりませんでした');
+
+  const countMatch = lines[start].match(/(\d+)件中/);
+  const expected = countMatch ? Number(countMatch[1]) : RESULT_LIMIT;
+  const rows = [];
+  const seen = new Set();
+  let current = null;
+  for (const line of lines.slice(start + 1)) {
+    const product = line.match(/https?:\/\/www\.yodobashi\.com\/product\/(\d+)\//);
+    if (product) {
+      const id = product[1];
+      if (seen.has(id)) {
+        // 同じ商品のレビューリンクなど。件数だけ拾って現在の商品の情報を維持する。
+        if (current && current.reviews == null) {
+          const review = line.match(/userEvaluation\)[^0-9]*(\d+)/);
+          if (review) current.reviews = Number(review[1]);
+        }
+        continue;
+      }
+      seen.add(id);
+      current = {
+        id,
+        title: null,
+        brand: null,
+        price: null,
+        reviews: null,
+        image: null,
+        url: product[0],
+      };
+      const imageUrl = line.match(/https?:\/\/image\.yodobashi\.com\/[^)\s]+/);
+      if (imageUrl) {
+        current.image = imageUrl[0];
+        const altStart = line.lastIndexOf('![', imageUrl.index);
+        const altEnd = line.lastIndexOf('](', imageUrl.index);
+        if (altStart !== -1 && altEnd > altStart) {
+          current.title =
+            line
+              .slice(altStart + 2, altEnd)
+              .replace(/^Image\s+\d+:\s*/i, '')
+              .trim() || null;
+        }
+      }
+      rows.push(current);
+      continue;
+    }
+    if (!current) continue;
+    if (current.price == null) {
+      const price = line.match(/￥\s*([\d,]+)/);
+      if (price) current.price = Number(price[1].replace(/,/g, ''));
+    }
+    if (current.brand == null) {
+      const brand = line.match(/^\[([^\]]+)\]\(https?:\/\/www\.yodobashi\.com\/\?mkrbrnds=/);
+      if (brand) current.brand = brand[1].trim();
+    }
+    if (current.reviews == null) {
+      const review = line.match(/userEvaluation\)[^0-9]*(\d+)/);
+      if (review) current.reviews = Number(review[1]);
+    }
+  }
+  return rows.slice(0, expected);
+}
+
+async function runYodobashi(q, cfg, fetchImpl) {
+  const target = `${YODOBASHI_SEARCH_BASE}${encodeURIComponent(q)}`;
+  const text = await fetchText(`${JINA_BASE}${target}`, cfg, fetchImpl);
+  const rows = parseYodobashiText(text);
+  const provider = PROVIDERS[2];
+  const items = rows.slice(0, RESULT_LIMIT).map((row, index) =>
+    makeItem({
+      provider: provider.id,
+      label: provider.label,
+      store: provider.store,
+      row: {
+        title: row.title,
+        brand: row.brand,
+        price: row.price,
+        url: row.url,
+        image: row.image,
+        reviews: row.reviews,
+      },
+      index,
+      cfg,
+      externalId: row.id,
+    })
+  );
+  return { items, credits: null };
+}
+
 /* ---------- 横断検索 ---------- */
 async function search({ q, provider = 'all', env = process.env, fetchImpl } = {}) {
   const cfg = getConfig(env);
@@ -425,21 +544,33 @@ async function search({ q, provider = 'all', env = process.env, fetchImpl } = {}
   const tasks = [];
   for (const target of selected) {
     if (target.kind === 'link') {
-      response.notices.push(`${target.label} は API 未設定のため直接検索リンクを表示します。`);
+      if (target.id === 'yodobashi') {
+        response.notices.push(
+          'ヨドバシ.com は設定で「r.jina.ai 経由でヨドバシ.comに接続する」を有効にすると検索結果を取得できます (現在は直接検索リンクを表示します)。'
+        );
+      } else {
+        response.notices.push(`${target.label} は API 未設定のため直接検索リンクを表示します。`);
+      }
       continue;
     }
+    const run =
+      target.id === 'amazon' ? runAmazon : target.id === 'yodobashi' ? runYodobashi : runRakuten;
     tasks.push(
       Promise.resolve()
-        .then(() => (target.id === 'amazon' ? runAmazon(query, cfg, doFetch) : runRakuten(query, cfg, doFetch)))
+        .then(() => run(query, cfg, doFetch))
         .then((result) => ({ ok: true, label: target.label, ...result }))
-        .catch((e) => ({ ok: false, label: target.label, message: redact(e.message, cfg) }))
+        .catch((e) => ({ ok: false, id: target.id, label: target.label, message: redact(e.message, cfg) }))
     );
   }
 
   const results = await Promise.all(tasks);
   for (const result of results) {
     if (result.ok) response.items.push(...result.items);
-    else response.notices.push(`${result.label} の検索に失敗しました: ${result.message}`);
+    else if (result.id === 'yodobashi') {
+      response.notices.push(
+        `ヨドバシ.com への接続に失敗したため、直接検索リンクを表示します (${result.message})。`
+      );
+    } else response.notices.push(`${result.label} の検索に失敗しました: ${result.message}`);
   }
   response.credits = lastCredits;
   return response;

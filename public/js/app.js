@@ -3,7 +3,7 @@
 const el = (id) => document.getElementById(id);
 
 const state = {
-  version: '0.8.0',
+  version: '0.9.0',
   stores: [],
   productNames: [],
   purchases: [],
@@ -694,6 +694,7 @@ async function openSettingsDialog() {
     el('settings-clear-easyparser').checked = false;
     el('settings-clear-rakuten').checked = false;
     el('settings-show-images').checked = Boolean(settings.showImages);
+    el('settings-yodobashi-jina').checked = Boolean(settings.yodobashiViaJina);
     el('settings-usdjpy').value = settings.usdJpy;
     el('settings-timeout').value = settings.timeout;
     el('settings-path').textContent = settings.storagePath;
@@ -708,6 +709,7 @@ async function saveSettings() {
     usdJpy: Number(el('settings-usdjpy').value),
     timeout: Number(el('settings-timeout').value),
     showImages: el('settings-show-images').checked,
+    yodobashiViaJina: el('settings-yodobashi-jina').checked,
   };
   const easyparser = el('settings-easyparser').value.trim();
   if (easyparser) body.easyparserKey = easyparser;

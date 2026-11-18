@@ -10,6 +10,7 @@ const EMPTY_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'shoppinglist-searc
 process.env.SHOPPINGLIST_DATA_DIR = EMPTY_DATA_DIR;
 
 const search = require('../src/search');
+const searchConfig = require('../src/search-config');
 
 const NO_KEYS = {
   SHOPPINGLIST_DATA_DIR: EMPTY_DATA_DIR,
@@ -38,6 +39,47 @@ function fetchStub(routes, calls) {
       text: async () => JSON.stringify(entry.body),
     };
   };
+}
+
+function textFetchStub(text, calls) {
+  return async (url) => {
+    calls.push(String(url));
+    return { ok: true, status: 200, text: async () => text };
+  };
+}
+
+function yodobashiEnv(enabled) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shoppinglist-yodobashi-'));
+  const env = { SHOPPINGLIST_DATA_DIR: dir };
+  if (enabled) searchConfig.save({ yodobashiViaJina: true }, env);
+  return { env, dir };
+}
+
+// r.jina.ai が返す Markdown を模したもの (冒頭はグローバルナビの商品)。
+function yodobashiResponse() {
+  return [
+    '# ヨドバシ.com - 検索結果',
+    '',
+    '[![Image 1: ナビの商品](https://image.yodobashi.com/product/nav.jpg)](https://www.yodobashi.com/product/999999999999/)',
+    '',
+    '20件中1件から20件までを表示',
+    '',
+    '[![Image 127: テスト コーヒー 無糖 900ml×12本 [コーヒー飲料]](https://image.yodobashi.com/product/100/000/001/002/549/368/100000001002549368_10205_004.jpg) ネスレ日本 テスト コーヒー 無糖 900ml×12本 [コーヒー飲料]](https://www.yodobashi.com/product/100000001002549368/)',
+    '',
+    '[ネスレ日本](https://www.yodobashi.com/?mkrbrnds=5000014550&word=x)2014/11/06',
+    '',
+    '*   ￥2,250',
+    '*   225 ゴールドポイント（10％還元）',
+    '',
+    '[](https://www.yodobashi.com/product/100000001002549368/#productSet6Opened--userEvaluation)（167）',
+    '',
+    'プロモーション',
+    '',
+    '[![Image 128: テスト コーヒー 詰め替え](https://image.yodobashi.com/product/100/000/001/003/588/669/100000001003588669_1000B_001.jpg) テストメーカー テスト コーヒー 詰め替え](https://www.yodobashi.com/product/100000001003588669/)',
+    '',
+    '*   ￥1,980',
+    '',
+  ].join('\n');
 }
 
 function amazonResponse() {
@@ -290,4 +332,94 @@ test('空のキーワードでは外部 API を呼ばない', async () => {
   assert.deepStrictEqual(calls, []);
   assert.deepStrictEqual(result.items, []);
   assert.ok(result.notices.some((n) => n.includes('キーワードを入力')));
+});
+
+test('ヨドバシは設定を有効にすると r.jina.ai 経由で商品一覧を取得する', async () => {
+  const { env, dir } = yodobashiEnv(true);
+  try {
+    const providers = search.getProviders({ env, q: 'コーヒー' });
+    const yodobashi = providers.find((p) => p.id === 'yodobashi');
+    assert.strictEqual(yodobashi.kind, 'api');
+    assert.strictEqual(yodobashi.configured, true);
+
+    const calls = [];
+    const result = await search.search({
+      q: 'コーヒー',
+      provider: 'yodobashi',
+      env,
+      fetchImpl: textFetchStub(yodobashiResponse(), calls),
+    });
+
+    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(
+      calls[0],
+      `https://r.jina.ai/https://www.yodobashi.com/?word=${encodeURIComponent('コーヒー')}`
+    );
+    assert.strictEqual(result.items.length, 2, '件数行より前のナビ商品は除外される');
+    const [first, second] = result.items;
+    assert.strictEqual(first.provider, 'yodobashi');
+    assert.strictEqual(first.store, 'ヨドバシ');
+    assert.strictEqual(first.externalId, '100000001002549368');
+    assert.strictEqual(first.title, 'テスト コーヒー 無糖 900ml×12本 [コーヒー飲料]');
+    assert.strictEqual(first.brand, 'ネスレ日本');
+    assert.strictEqual(first.price, 2250);
+    assert.strictEqual(first.reviews, 167);
+    assert.strictEqual(
+      first.imageUrl,
+      'https://image.yodobashi.com/product/100/000/001/002/549/368/100000001002549368_10205_004.jpg'
+    );
+    assert.strictEqual(first.url, 'https://www.yodobashi.com/product/100000001002549368/');
+    assert.strictEqual(second.price, 1980);
+    assert.ok(!result.notices.some((n) => n.includes('失敗')));
+    assert.ok(result.externalLinks.some((l) => l.id === 'yodobashi' && l.url.includes('yodobashi')));
+    assert.strictEqual(search.getStatus({ env }).configured.yodobashi, true);
+    assert.ok(search.getStatus({ env }).notices.some((n) => n.includes('r.jina.ai')));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ヨドバシは設定が無効のとき外部へ接続せず直接検索リンクを返す', async () => {
+  const { env, dir } = yodobashiEnv(false);
+  try {
+    const providers = search.getProviders({ env, q: 'コーヒー' });
+    assert.strictEqual(providers.find((p) => p.id === 'yodobashi').kind, 'link');
+
+    const calls = [];
+    const result = await search.search({
+      q: 'コーヒー',
+      provider: 'yodobashi',
+      env,
+      fetchImpl: textFetchStub(yodobashiResponse(), calls),
+    });
+    assert.deepStrictEqual(calls, []);
+    assert.deepStrictEqual(result.items, []);
+    assert.ok(result.notices.some((n) => n.includes('直接検索リンク')));
+    assert.strictEqual(search.getStatus({ env }).configured.yodobashi, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ヨドバシへの接続に失敗した場合は直接検索リンクへフォールバックする', async () => {
+  const { env, dir } = yodobashiEnv(true);
+  try {
+    const calls = [];
+    const result = await search.search({
+      q: 'コーヒー',
+      provider: 'all',
+      env,
+      fetchImpl: async (url) => {
+        calls.push(String(url));
+        throw new Error('network down');
+      },
+    });
+    assert.strictEqual(calls.length, 1);
+    assert.match(calls[0], /^https:\/\/r\.jina\.ai\//);
+    assert.deepStrictEqual(result.items, []);
+    assert.ok(result.notices.some((n) => n.includes('接続に失敗') && n.includes('直接検索リンク')));
+    assert.ok(result.externalLinks.some((l) => l.id === 'yodobashi'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
