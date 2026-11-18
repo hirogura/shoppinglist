@@ -11,11 +11,12 @@
     <header class="app-header">
       <div class="brand">
         <h1>買い物リスト管理シート</h1>
-        <span class="version" id="version">v.0.7.1</span>
+        <span class="version" id="version">v.0.8.0</span>
       </div>
       <div class="header-actions">
         <button type="button" class="btn" id="btn-settings">設定</button>
         <button type="button" class="btn" id="btn-search" aria-expanded="false">通販で検索</button>
+        <button type="button" class="btn" id="btn-sync">同期</button>
         <button type="button" class="btn" id="btn-export">エクスポート</button>
         <button type="button" class="btn" id="btn-import">インポート</button>
         <button type="button" class="btn" id="btn-update">アップデート</button>
@@ -198,6 +199,41 @@
         </div>
         <div class="dialog-actions">
           <button type="button" class="btn" id="btn-export-close">閉じる</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="sync-dialog" class="dialog">
+      <form method="dialog" class="dialog-form">
+        <h2>🔄 購入履歴の同期</h2>
+        <p class="dialog-desc">
+          Tailnet 内の別の買い物リストと 1 日 1 回・片方向で同期します。設定を保存すると相手の役割は自動で反対になります。
+        </p>
+        <div class="sync-row">
+          <label>役割</label>
+          <div class="sync-role-toggle">
+            <button type="button" id="sync-role-source">同期元（送る側）</button>
+            <button type="button" id="sync-role-dest">同期先（受ける側）</button>
+          </div>
+        </div>
+        <p class="dialog-desc" id="sync-role-desc"></p>
+        <div class="sync-row">
+          <label for="sync-peer">同期相手</label>
+          <select id="sync-peer" class="sync-peer-select">
+            <option value="">-- Tailnet から読み込み中 --</option>
+          </select>
+        </div>
+        <div class="sync-row">
+          <label for="sync-time">同期時刻</label>
+          <input type="time" id="sync-time" value="03:00" />
+          <span class="hint">1 日 1 回、この時刻以降に自動同期します</span>
+        </div>
+        <p class="sync-status" id="sync-status">読み込み中…</p>
+        <div class="dialog-actions">
+          <button type="button" class="btn" id="btn-sync-close">閉じる</button>
+          <button type="button" class="btn" id="btn-sync-stop">同期を停止</button>
+          <button type="button" class="btn" id="btn-sync-run">⚡ 今すぐ同期</button>
+          <button type="button" class="btn btn-primary" id="btn-sync-save">保存</button>
         </div>
       </form>
     </dialog>

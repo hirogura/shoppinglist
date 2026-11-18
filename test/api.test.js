@@ -337,6 +337,50 @@ test('エクスポート→インポートでデータが復元できる', async
   assert.strictEqual(after.purchases.length, exported.purchases.length);
 });
 
+test('同期設定とピア一覧を取得できる', async () => {
+  const { body: config } = await api('/api/sync/config');
+  assert.strictEqual(config.role, 'source');
+  assert.strictEqual(config.peer, '');
+  assert.strictEqual(config.sync_time, '03:00');
+
+  const { body: peers } = await api('/api/sync/peers');
+  assert.ok(Array.isArray(peers.peers));
+
+  const { body: bundle } = await api('/api/sync/export');
+  assert.strictEqual(bundle.version, 1);
+  assert.ok(Array.isArray(bundle.data.purchases));
+  assert.ok(Array.isArray(bundle.data.stores));
+});
+
+test('同期の設定・役割・インポートを検証できる', async () => {
+  const { status: badConfig } = await api('/api/sync/config', {
+    method: 'POST',
+    body: JSON.stringify({ role: 'bad', peer: '', sync_time: '03:00' }),
+  });
+  assert.strictEqual(badConfig, 400);
+
+  const { status: roleStatus, body: role } = await api('/api/sync/role', {
+    method: 'POST',
+    body: JSON.stringify({ role: 'destination', sync_time: '03:30' }),
+  });
+  assert.strictEqual(roleStatus, 200);
+  assert.strictEqual(role.role, 'destination');
+  assert.strictEqual(role.sync_time, '03:30');
+
+  const { status: badBundle } = await api('/api/sync/import', {
+    method: 'POST',
+    body: JSON.stringify({ data: {} }),
+  });
+  assert.strictEqual(badBundle, 400);
+
+  const { status: unlinkStatus, body: unlink } = await api('/api/sync/unlink', {
+    method: 'POST',
+    body: JSON.stringify({ peer_url: '' }),
+  });
+  assert.strictEqual(unlinkStatus, 200);
+  assert.strictEqual(unlink.unlinked, false);
+});
+
 test('通販検索の設定を保存するとワークスペース外のファイルに記録される', async () => {
   const { body: before } = await api('/api/settings');
   assert.strictEqual(before.easyparserKey.configured, false);

@@ -3,13 +3,14 @@
 const el = (id) => document.getElementById(id);
 
 const state = {
-  version: '0.7.1',
+  version: '0.8.0',
   stores: [],
   productNames: [],
   purchases: [],
   stats: null,
   editingId: null,
   importPayload: null,
+  sync: { role: 'source' },
   search: {
     open: false,
     query: '',
@@ -527,6 +528,147 @@ async function runImport() {
   }
 }
 
+/* ---------- Tailnet 内同期 ---------- */
+function setSyncRole(role) {
+  const value = role === 'destination' ? 'destination' : 'source';
+  state.sync.role = value;
+  el('sync-role-source').classList.toggle('active', value === 'source');
+  el('sync-role-dest').classList.toggle('active', value === 'destination');
+  el('sync-role-desc').textContent =
+    value === 'source'
+      ? 'この端末が「同期元」: 相手へ購入履歴を送ります。保存すると相手は自動で「同期先」になります。'
+      : 'この端末が「同期先」: 相手から購入履歴を受け取ります。保存すると相手は自動で「同期元」になります。';
+}
+
+function formatSyncDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value || '');
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
+}
+
+function renderSyncStatus(config) {
+  const role = config.role === 'destination' ? '同期先' : '同期元';
+  const peer = config.peer_name
+    ? `${config.peer_name}（${config.peer}）`
+    : config.peer || '未設定';
+  const last = config.last_sync
+    ? `最終同期: ${formatSyncDate(config.last_sync)}`
+    : '最終同期: まだありません';
+  const result = config.last_result ? ` ／ 結果: ${config.last_result}` : '';
+  el('sync-status').textContent =
+    `役割: ${role} ／ 相手: ${peer} ／ 時刻: ${config.sync_time || '--:--'} ／ ${last}${result}`;
+}
+
+async function openSyncDialog() {
+  el('sync-dialog').showModal();
+  el('sync-status').textContent = '読み込み中…';
+  try {
+    const [config, peerData] = await Promise.all([api('/sync/config'), api('/sync/peers')]);
+    setSyncRole(config.role);
+    const peers = peerData.peers || [];
+    const select = el('sync-peer');
+    select.innerHTML = '';
+    const empty = makeNode('option', '', '-- 選択してください --');
+    empty.value = '';
+    select.appendChild(empty);
+    for (const peer of peers) {
+      const option = makeNode(
+        'option',
+        '',
+        `${peer.name} [${peer.dns}]${peer.online ? '' : '（オフライン）'}`
+      );
+      option.value = peer.url;
+      option.dataset.name = peer.name;
+      select.appendChild(option);
+    }
+    if (config.peer && !peers.some((p) => p.url === config.peer)) {
+      const option = makeNode('option', '', `${config.peer_name || config.peer}（一覧外）`);
+      option.value = config.peer;
+      option.dataset.name = config.peer_name || '';
+      select.appendChild(option);
+    }
+    select.value = config.peer || '';
+    el('sync-time').value = config.sync_time || '03:00';
+    renderSyncStatus(config);
+  } catch (e) {
+    el('sync-status').textContent = `設定の読み込みに失敗しました: ${e.message}`;
+  }
+}
+
+async function saveSyncConfig() {
+  const select = el('sync-peer');
+  const peer = select.value;
+  if (!peer) {
+    toast('同期相手を選択してください', 'error');
+    return;
+  }
+  const peerName =
+    select.selectedOptions.length > 0 ? select.selectedOptions[0].dataset.name || '' : '';
+  const syncTime = el('sync-time').value;
+  if (!syncTime) {
+    toast('同期時刻を指定してください', 'error');
+    return;
+  }
+  try {
+    const result = await api('/sync/config', {
+      method: 'POST',
+      body: JSON.stringify({
+        role: state.sync.role,
+        peer,
+        peer_name: peerName,
+        sync_time: syncTime,
+      }),
+    });
+    toast(result.peer_message || '同期設定を保存しました', 'ok');
+    renderSyncStatus(result.config || (await api('/sync/config')));
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function runSyncNow() {
+  const button = el('btn-sync-run');
+  button.disabled = true;
+  button.textContent = '同期中…';
+  try {
+    const result = await api('/sync/run', { method: 'POST', body: JSON.stringify({}) });
+    toast(result.message || '同期しました', 'ok');
+    await refresh();
+    renderSyncStatus(await api('/sync/config'));
+  } catch (e) {
+    toast(e.message, 'error');
+    try {
+      renderSyncStatus(await api('/sync/config'));
+    } catch (ignore) {
+      /* 状態取得に失敗してもダイアログは開いたままにする */
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = '⚡ 今すぐ同期';
+  }
+}
+
+async function stopSync() {
+  if (!confirm('同期を停止しますか？\n相手の指定が外れ、自動同期も行われなくなります。')) return;
+  const button = el('btn-sync-stop');
+  button.disabled = true;
+  button.textContent = '停止中…';
+  try {
+    const result = await api('/sync/stop', { method: 'POST', body: JSON.stringify({}) });
+    toast(result.peer_message || '同期を停止しました', 'ok');
+    el('sync-peer').value = '';
+    renderSyncStatus(result.config || (await api('/sync/config')));
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = '同期を停止';
+  }
+}
+
 /* ---------- 通販検索の設定 ---------- */
 function settingHint(entry) {
   if (!entry.configured) return '未設定';
@@ -975,6 +1117,16 @@ function bindEvents() {
   });
 
   el('btn-update').addEventListener('click', runUpdate);
+
+  // Tailnet 内同期
+  el('btn-sync').addEventListener('click', openSyncDialog);
+  el('btn-sync-close').addEventListener('click', () => el('sync-dialog').close());
+  el('sync-role-source').addEventListener('click', () => setSyncRole('source'));
+  el('sync-role-dest').addEventListener('click', () => setSyncRole('destination'));
+  el('btn-sync-save').addEventListener('click', saveSyncConfig);
+  el('btn-sync-run').addEventListener('click', runSyncNow);
+  el('btn-sync-stop').addEventListener('click', stopSync);
+  setSyncRole('source');
 
   // 通販検索の設定
   el('btn-settings').addEventListener('click', openSettingsDialog);

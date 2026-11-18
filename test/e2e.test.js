@@ -463,6 +463,49 @@ test('通販検索ペインで検索結果と購入履歴を同じ画面で確�
   assert.strictEqual(result.imagesAfterReopen, 1, 'ペインを閉じた間の設定変更が再表示に反映されません');
 });
 
+test('同期ダイアログが Tailnet の設定状況を表示する', async () => {
+  const { result, errors } = await runInBrowser(async (window) => {
+    const doc = window.document;
+    const actions = [...doc.querySelectorAll('.header-actions .btn')].map((b) => b.textContent);
+    click(window, 'btn-sync');
+    await wait(500);
+    const opened = doc.getElementById('sync-dialog').open;
+    const status = doc.getElementById('sync-status').textContent;
+    const peers = doc.querySelectorAll('#sync-peer option').length;
+    const time = doc.getElementById('sync-time').value;
+
+    doc.getElementById('sync-role-dest').dispatchEvent(
+      new window.MouseEvent('click', { bubbles: true })
+    );
+    const destActive = doc.getElementById('sync-role-dest').classList.contains('active');
+
+    click(window, 'btn-sync-close');
+    return {
+      actions,
+      opened,
+      status,
+      peers,
+      time,
+      destActive,
+      closed: !doc.getElementById('sync-dialog').open,
+    };
+  });
+
+  assert.deepStrictEqual(errors, [], 'フロントでエラーが発生しています');
+  const syncIndex = result.actions.indexOf('同期');
+  assert.ok(
+    syncIndex > result.actions.indexOf('通販で検索') &&
+      syncIndex < result.actions.indexOf('エクスポート'),
+    '「同期」ボタンが「エクスポート」の左にありません'
+  );
+  assert.strictEqual(result.opened, true, '同期ダイアログが開きませんでした');
+  assert.match(result.status, /役割: .* ／ 相手: /);
+  assert.ok(result.peers >= 1, '同期相手の選択肢がありません');
+  assert.strictEqual(result.time, '03:00');
+  assert.strictEqual(result.destActive, true, '役割を切り替えられませんでした');
+  assert.strictEqual(result.closed, true);
+});
+
 test('設定ダイアログから Easyparser キーを登録・削除できる', async () => {
   const { result, errors } = await runInBrowser(async (window) => {
     const doc = window.document;

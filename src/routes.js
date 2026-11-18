@@ -17,6 +17,7 @@ const { updateFromGitHub } = require('./git');
 const { scheduleRestart } = require('./service');
 const searchService = require('./search');
 const searchConfig = require('./search-config');
+const syncService = require('./sync');
 
 const router = express.Router();
 
@@ -60,6 +61,72 @@ router.put('/settings', (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+/* ---------- Tailnet 内同期 (selfmark 互換の片方向ミラー) ---------- */
+router.get('/sync/config', (req, res) => {
+  res.json(syncService.publicConfig());
+});
+
+router.post('/sync/config', async (req, res) => {
+  try {
+    res.json({ ok: true, ...(await syncService.saveConfig(req.body || {})) });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+router.post('/sync/role', (req, res) => {
+  try {
+    res.json({ ok: true, ...syncService.applyPeerRole(req.body || {}) });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+router.get('/sync/peers', async (req, res) => {
+  try {
+    const [peers, self] = await Promise.all([
+      syncService.getPeerList(),
+      syncService.getSelfInfo(),
+    ]);
+    res.json({ peers, self_url: self.url, self_name: self.name });
+  } catch (e) {
+    res.status(500).json({ error: 'ピア一覧の取得に失敗しました' });
+  }
+});
+
+router.get('/sync/export', (req, res) => {
+  res.json(syncService.buildBundle());
+});
+
+router.post('/sync/import', (req, res) => {
+  try {
+    syncService.applyBundle(req.body);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+router.post('/sync/run', async (req, res) => {
+  try {
+    res.json(await syncService.runNow());
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+router.post('/sync/stop', async (req, res) => {
+  try {
+    res.json({ ok: true, ...(await syncService.stopSync(req.body || {})) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+router.post('/sync/unlink', (req, res) => {
+  res.json({ ok: true, ...syncService.unlink(req.body || {}) });
 });
 
 /* ---------- 通販検索 (Easyparser / 楽天はサーバー側でのみ認証情報を利用) ---------- */

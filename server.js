@@ -4,6 +4,7 @@ const express = require('express');
 const path = require('path');
 const routes = require('./src/routes');
 const { APP_ROOT } = require('./src/db');
+const syncService = require('./src/sync');
 
 const PORT = Number(process.env.PORT || 3368);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -31,6 +32,7 @@ app.use((err, req, res, next) => {
 const server = app.listen(PORT, HOST, () => {
   console.log(`買い物リスト管理シート v${require('./package.json').version}`);
   console.log(`listening on http://${HOST}:${PORT}`);
+  syncService.startScheduler();
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

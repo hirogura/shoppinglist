@@ -280,6 +280,14 @@ function importData(payload, mode = 'merge') {
   };
 }
 
+// 同期バンドルの反映用 (空のデータでもミラーできるよう importData とは分ける)
+function replaceAllData(payload = {}) {
+  const purchases = Array.isArray(payload.purchases) ? payload.purchases : [];
+  const stores = Array.isArray(payload.stores) ? payload.stores : [];
+  const result = runImport(purchases, stores, 'replace');
+  return { ...result, mode: 'replace', total: result.inserted + result.updated };
+}
+
 module.exports = {
   APP_ROOT,
   DATA_DIR,
@@ -295,4 +303,5 @@ module.exports = {
   addStore,
   exportData,
   importData,
+  replaceAllData,
 };

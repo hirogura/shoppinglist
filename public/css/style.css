@@ -590,6 +590,61 @@ select:focus {
   }
 }
 
+/* ---------- Tailnet 同期 ---------- */
+.sync-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sync-row > label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  min-width: 76px;
+}
+
+.sync-role-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.sync-role-toggle button {
+  border: none;
+  background: #fafbfc;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sync-role-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.sync-peer-select {
+  flex: 1 1 260px;
+  min-width: 200px;
+  font-size: 13px;
+}
+
+.sync-status {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 /* ---------- 通販検索の設定 ---------- */
 .settings-grid {
   display: grid;
